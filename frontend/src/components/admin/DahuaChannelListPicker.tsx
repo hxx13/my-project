@@ -9,6 +9,7 @@ import {
   type FetchChannelsFn,
 } from "@/utils/dahuaChannelUtils";
 import { cn } from "@/lib/utils";
+import { displayFloorAndName } from "@/utils/dahuaChannelName";
 
 export interface ChannelRemarkCategory {
   id: number;
@@ -31,6 +32,8 @@ interface Props {
   className?: string;
   /** 左右两列滚动列表的最大高度 */
   listMaxHeightClass?: string;
+  /** 显示「全选筛选结果 / 清空已选」快捷操作 */
+  showSelectAll?: boolean;
 }
 
 /**
@@ -47,6 +50,7 @@ export function DahuaChannelListPicker({
   idPrefix,
   className,
   listMaxHeightClass = "max-h-64",
+  showSelectAll = false,
 }: Props) {
   const [options, setOptions] = useState<DahuaDeviceChannelRow[]>([]);
   const [labelExtra, setLabelExtra] = useState<Record<string, string>>({});
@@ -105,7 +109,7 @@ export function DahuaChannelListPicker({
     for (const ch of options) {
       const code = normalizeChannelCode(ch.channelCode);
       if (!code) continue;
-      const name = (ch.channelName || "").trim();
+      const name = displayFloorAndName((ch.channelName || "").trim());
       if (!m.has(code)) m.set(code, name || `未命名 / ${code}`);
     }
     for (const [code, label] of Object.entries(labelExtra)) {
@@ -124,7 +128,9 @@ export function DahuaChannelListPicker({
     if (!code) return false;
     if (pickedCodes.includes(code)) return false;
     if (remarkId !== "" && ch.remarkCategoryId !== remarkId) return false;
-    return matches(code, (ch.channelName || "").trim(), availKeyword.trim().toLowerCase());
+    const kw = availKeyword.trim().toLowerCase();
+    return matches(code, (ch.channelName || "").trim(), kw)
+      || matches(code, displayFloorAndName(ch.channelName || ""), kw);
   });
 
   const picked = pickedCodes.filter((code) =>
@@ -148,7 +154,31 @@ export function DahuaChannelListPicker({
       <div className="flex gap-2">
         {/* 左侧：可选通道 */}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="shrink-0 text-xs text-[var(--twin-mute)]">可选通道</div>
+          <div className="flex shrink-0 items-center justify-between">
+            <div className="text-xs text-[var(--twin-mute)]">可选通道</div>
+            {showSelectAll && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  className="text-[var(--twin-primary)] disabled:opacity-40"
+                  disabled={available.length === 0}
+                  onClick={() => {
+                    const codes = available
+                      .map((ch) => normalizeChannelCode(ch.channelCode))
+                      .filter(Boolean) as string[];
+                    onChange(Array.from(new Set([...pickedCodes, ...codes])));
+                  }}
+                >
+                  全选当前筛选（{available.length}）
+                </button>
+                {pickedCodes.length > 0 && (
+                  <button type="button" className="text-[var(--twin-mute)]" onClick={() => onChange([])}>
+                    清空
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {remarkCategories && remarkCategories.length > 0 && (
             <select
               className="h-8 w-full shrink-0 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
@@ -176,7 +206,7 @@ export function DahuaChannelListPicker({
               available.map((ch) => {
                 const code = normalizeChannelCode(ch.channelCode);
                 if (!code) return null;
-                const name = (ch.channelName || "未命名通道") + " / " + code;
+                const name = displayFloorAndName(ch.channelName || "") || "未命名通道";
                 return (
                   <button
                     key={`${idPrefix}-avail-${ch.id}`}
@@ -185,7 +215,8 @@ export function DahuaChannelListPicker({
                     className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
                   >
                     <span className="shrink-0 font-bold text-indigo-600">＋</span>
-                    <span className="truncate">{name}</span>
+                    <span className="min-w-0 flex-1 truncate">{name}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-[var(--twin-mute)]">{code}</span>
                     {ch.remarkCategoryName ? (
                       <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">[{ch.remarkCategoryName}]</span>
                     ) : null}

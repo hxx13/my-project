@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Clock, Megaphone } from "lucide-react";
 import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
 import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
@@ -28,56 +28,49 @@ type Props = {
 };
 
 /**
- * 正文视频：所有视频收进一个可吸附的竖排容器。
+ * 正文视频从 HTML 里抽出来，交给面板顶部固定的视频区渲染。
  *
- * - 跟随正文滚动，容器顶部到达视口顶部后自动吸附（CSS sticky）；
- * - 多个视频按顺序往下排，一起循环播放；
- * - 大屏只允许静音自动播放，所以固定 muted。
+ * 不再把 <video> 留在滚动正文里再搬运：搬运会让浏览器重置播放，
+ * 而且在原位置/固定区之间来回插拔容易留下双份画面。
+ * 抽出来只渲染一次，正文在视频下方滚动。
  */
-function prepareInlineVideos(html: string): string {
-  if (!html.includes("<video")) return html;
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const source = Array.from(doc.querySelectorAll("video"));
-  if (source.length === 0) return html;
-
-  const slots: HTMLElement[] = [];
-  for (const video of source) {
-    video.removeAttribute("controls");
-    video.setAttribute("autoplay", "");
-    video.setAttribute("muted", "");
-    video.setAttribute("loop", "");
-    video.setAttribute("playsinline", "");
-    video.setAttribute("preload", "auto");
-    const slot = doc.createElement("div");
-    video.replaceWith(slot);
-    slot.appendChild(video);
-    slots.push(slot);
-  }
-
-  const stack = doc.createElement("div");
-  stack.className = "rt-video-stack";
-  for (const slot of slots) {
-    while (slot.firstChild) stack.appendChild(slot.firstChild);
-  }
-  slots[0].replaceWith(stack);
-  slots.slice(1).forEach((s) => s.remove());
-  return doc.body.innerHTML;
+function prepareBody(raw: string): { html: string; srcs: string[] } {
+  const safe = prepareAnnouncementHtml(raw ?? "");
+  if (!safe.includes("<video")) return { html: safe, srcs: [] };
+  const doc = new DOMParser().parseFromString(safe, "text/html");
+  const srcs: string[] = [];
+  doc.querySelectorAll("video").forEach((video) => {
+    const src =
+      video.getAttribute("src") || video.querySelector("source")?.getAttribute("src") || "";
+    if (src.trim()) srcs.push(src.trim());
+    const parent = video.parentElement;
+    video.remove();
+    // 只剩空壳的段落一起收掉，避免正文里留下大块空白
+    if (
+      parent &&
+      parent.tagName === "P" &&
+      parent.textContent?.trim() === "" &&
+      parent.querySelectorAll("img, video").length === 0
+    ) {
+      parent.remove();
+    }
+  });
+  return { html: doc.body.innerHTML, srcs };
 }
 
 function SafeHtmlBlock({
-  raw,
+  html,
   className = "",
 }: {
-  raw: string;
+  html: string;
   className?: string;
 }) {
-  const html = useMemo(() => prepareInlineVideos(prepareAnnouncementHtml(raw ?? "")), [raw]);
-  if (!html) {
+  if (!html.trim()) {
     return <p className={className}>暂无内容。</p>;
   }
   return (
     <div
-      className={`${className} [&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:mx-auto [&_img]:my-2 [&_img]:rounded-[var(--app-radius-element)] [&_img]:cursor-zoom-in [&_video]:block [&_video]:w-full [&_video]:max-w-[560px] [&_video]:mx-auto [&_video]:my-2 [&_video]:rounded-[var(--app-radius-element)]`}
+      className={`${className} [&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:mx-auto [&_img]:my-2 [&_img]:rounded-[var(--app-radius-element)] [&_img]:cursor-zoom-in`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -100,30 +93,43 @@ export function CodexNoticeStreamPanel({
   const visual = useDashboardVisual();
   const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([noticeBody, returnRules]);
   const [mediaHold, setMediaHold] = useState(false);
+  const stripRef = useRef<HTMLDivElement>(null);
+  const mediaHoldRef = useRef(false);
   const holdCbRef = useRef(onMediaHoldChange);
   holdCbRef.current = onMediaHoldChange;
   const cycleCbRef = useRef(onCycleComplete);
   cycleCbRef.current = onCycleComplete;
 
+  const preparedNotice = useMemo(() => prepareBody(noticeBody), [noticeBody]);
+  const preparedRules = useMemo(() => prepareBody(returnRules), [returnRules]);
+  /** 顶部固定区渲染的视频地址；正文里已经抽掉，只渲染这一份 */
+  const videoSrcs = useMemo(
+    () => [...preparedNotice.srcs, ...preparedRules.srcs],
+    [preparedNotice, preparedRules],
+  );
+
   useEffect(() => {
+    mediaHoldRef.current = mediaHold;
     holdCbRef.current?.(mediaHold);
     return () => holdCbRef.current?.(false);
   }, [mediaHold]);
 
+  /** 播放期间滚动先到底了：先不切，等视频播完由定时器统一切。 */
+  const handleCycleComplete = useCallback(() => {
+    if (mediaHoldRef.current) return;
+    cycleCbRef.current();
+  }, []);
+
   /**
-   * 视频吸附后暂停滚动，并以「最长视频时长」为上限挂起 Tab 轮播；到点再切下一个。
+   * 顶部视频区常驻，以「最长视频时长」为上限挂起 Tab 轮播；播完停 2 秒再切。
    * 切回本 Tab 时组件重新挂载，视频自然从头播放。
    */
   useEffect(() => {
-    if (!active) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const stack = container.querySelector<HTMLElement>(".rt-video-stack");
-    const videos = Array.from(container.querySelectorAll<HTMLVideoElement>("video"));
-    if (!stack || videos.length === 0) return;
+    if (!active || videoSrcs.length === 0) return;
+    const videos = Array.from(stripRef.current?.querySelectorAll<HTMLVideoElement>("video") ?? []);
+    if (videos.length === 0) return;
 
     let cancelled = false;
-    let started = false;
     let timer: number | null = null;
     let retry: number | null = null;
     const beganAt = Date.now();
@@ -131,16 +137,11 @@ export function CodexNoticeStreamPanel({
     videos.forEach((v) => {
       v.muted = true;
       v.loop = true;
-      try {
-        v.currentTime = 0;
-      } catch {
-        /* 尚未加载元数据 */
-      }
       void v.play().catch(() => {});
     });
 
     const begin = () => {
-      if (started || cancelled) return;
+      if (cancelled) return;
       const known = videos
         .map((v) => (Number.isFinite(v.duration) ? v.duration : 0))
         .filter((d) => d > 0);
@@ -149,48 +150,37 @@ export function CodexNoticeStreamPanel({
         retry = window.setTimeout(begin, 400);
         return;
       }
-      started = true;
       const holdMs = Math.max(10, ...(known.length ? known : [10])) * 1000;
       setMediaHold(true);
+      // 视频播完先停一拍再切，别让画面在结尾瞬间跳走
+      const VIDEO_END_DWELL_MS = 2000;
       timer = window.setTimeout(() => {
         if (cancelled) return;
-        setMediaHold(false);
-        cycleCbRef.current();
+        timer = window.setTimeout(() => {
+          if (cancelled) return;
+          setMediaHold(false);
+          cycleCbRef.current();
+        }, VIDEO_END_DWELL_MS);
       }, holdMs);
     };
-
-    const onScroll = () => {
-      if (started) return;
-      const cTop = container.getBoundingClientRect().top;
-      const sTop = stack.getBoundingClientRect().top;
-      if (sTop <= cTop + 2) begin();
-    };
-
-    const raf = requestAnimationFrame(() => {
-      if (cancelled) return;
-      if (container.scrollHeight <= container.clientHeight + 2) begin();
-      else onScroll();
-    });
-    container.addEventListener("scroll", onScroll, { passive: true });
+    begin();
 
     return () => {
       cancelled = true;
-      cancelAnimationFrame(raf);
-      container.removeEventListener("scroll", onScroll);
       if (timer != null) clearTimeout(timer);
       if (retry != null) clearTimeout(retry);
       setMediaHold(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, generation, noticeBody, returnRules]);
+  }, [active, generation, videoSrcs]);
 
   const scrollHandlers = useVerticalAutoScroll(containerRef, {
-    enabled: active && !lightbox && !mediaHold,
+    enabled: active && !lightbox,
     pauseStartMs: 1500,
     pauseEndMs: 2000,
     msPerPx: 24,
     fallbackTimeoutMs: Math.max(4000, fallbackSeconds * 1000),
-    onCycleComplete,
+    onCycleComplete: handleCycleComplete,
     resetKey: generation,
     mode: scrollMode,
   });
@@ -204,9 +194,18 @@ export function CodexNoticeStreamPanel({
 
   return (
     <>
+      <div className="flex h-full min-h-0 w-full flex-col">
+      {/* 视频常驻顶部，正文在下方滚动；只渲染这一份，不再搬运节点 */}
+      {videoSrcs.length > 0 ? (
+        <div ref={stripRef} className="rt-video-pinned">
+          {videoSrcs.map((src) => (
+            <video key={src} src={src} autoPlay muted loop playsInline preload="auto" />
+          ))}
+        </div>
+      ) : null}
       <div
         ref={containerRef}
-        className="h-full w-full touch-pan-y overflow-y-auto overflow-x-hidden pr-1 [scrollbar-gutter:stable] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="min-h-0 w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden pr-1 [scrollbar-gutter:stable] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         {...scrollHandlers}
       >
       <div className="flex min-w-0 items-center gap-2 pb-1.5">
@@ -219,7 +218,7 @@ export function CodexNoticeStreamPanel({
       </div>
       {noticeBody.trim() ? (
         <SafeHtmlBlock
-          raw={noticeBody}
+          html={preparedNotice.html}
           className={`text-base leading-relaxed md:text-lg ${noticeBodyTone}`}
         />
       ) : (
@@ -252,11 +251,12 @@ export function CodexNoticeStreamPanel({
         </span>
       </div>
       <SafeHtmlBlock
-        raw={returnRules}
+        html={preparedRules.html}
         className={`text-xs leading-snug md:text-sm ${rulesTone}`}
       />
 
       <div className="h-3" />
+      </div>
       </div>
       {lightbox ? (
         <PageHelpImageLightbox

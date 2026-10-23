@@ -153,6 +153,7 @@ import { ShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
 import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, detailParentsLast, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, allocSelectVerdict, ALLOC_CANCEL_ZONE, allocZoneReject, statusZoneKey, parseStatusZone, detailZoneKey, parseDetailZone, detailPhotoKey, SPECIAL_DETAIL_DICT, SPECIAL_DETAIL_CANONICAL, HEALTH_SEVERITY_DICT, HEALTH_SEVERITY_CANONICAL, HEALTH_CHECK_ACTION, HEALTH_ITCH_CANONICAL, HEALTH_ITCH_LABEL, HEALTH_ITCH_TRUE, severityZoneKey, parseSeverityZone, SEVERITY_CLEAR_ZONE, detailCodesOfValues, severityOfValues, itchOfValues, VET_UNREAD_COLOR } from "@/features/cage-shelf/constants";
 import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
+import { ItchChip } from "@/features/cage-shelf/components/ItchChip";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
 import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import CageScanProgressBanner from "@/features/cage-shelf/components/CageScanProgressBanner";
@@ -941,27 +942,35 @@ function Inner(){
     }
     return m;
   },[alertData]);
-  // 左侧树徽标：每个笼架/房间含哪些状态码（新端点直接回 shelveId/roomId，不再经 fullTree 映射）
+  // 左侧树徽标：球点表示「有哪些特殊状态」（不再只显示超时告警的那几个）
+  const statusCodesOfTreeRow = (r: { needDivide?: number; specialFeeding?: number; animalTransfer?: number; healthAbnormal?: number; cohabitation?: number }) => {
+    const s = new Set<string>();
+    if (Number(r.needDivide) > 0) s.add("NEED_DIVIDE");
+    if (Number(r.specialFeeding) > 0) s.add("SPECIAL_FEEDING");
+    if (Number(r.animalTransfer) > 0) s.add("ANIMAL_TRANSFER");
+    if (Number(r.healthAbnormal) > 0) s.add("HEALTH_ABNORMAL");
+    if (Number(r.cohabitation) > 0) s.add("COHABITATION");
+    return s;
+  };
   const alertStatusesByShelf=useMemo(()=>{
     const m=new Map<string,Set<string>>();
-    if(!alertData)return m;
-    for(const a of alertData){
-      if(!a.shelveId)continue;
-      if(!m.has(a.shelveId))m.set(a.shelveId,new Set());
-      m.get(a.shelveId)!.add(a.statusCode);
+    for(const r of fullTree){
+      const s=statusCodesOfTreeRow(r);
+      if(s.size) m.set(String(r.shelveId), s);
     }
     return m;
-  },[alertData]);
+  },[fullTree]);
   const alertStatusesByRoom=useMemo(()=>{
     const m=new Map<string,Set<string>>();
-    if(!alertData)return m;
-    for(const a of alertData){
-      if(!a.roomId)continue;
-      if(!m.has(a.roomId))m.set(a.roomId,new Set());
-      m.get(a.roomId)!.add(a.statusCode);
+    for(const r of fullTree){
+      const s=statusCodesOfTreeRow(r);
+      if(!s.size) continue;
+      const k=String(r.roomId);
+      if(!m.has(k))m.set(k,new Set());
+      s.forEach(c=>m.get(k)!.add(c));
     }
     return m;
-  },[alertData]);
+  },[fullTree]);
   // 收藏已改房间级（见顶部 useRoomBookmarks）：笼架级的 pinned/bmList/BookmarkShelfGrid 一并退役。
 
   /** 展开到某个房间（合并式：不动用户自己展开的别的分支），并把它滚到视野中间。 */
@@ -1447,11 +1456,13 @@ function Inner(){
    * 而且同一句话在几十个格子上重复几十遍。完整原因点下去仍由各模式的 toast 给出。
    */
   const modeDisabledReasons = useMemo(() => {
-    if (!gridMultiSelect) return undefined;
+    // 状态模式（拖色区/拍照两档）也要网纹：拍照档不是多选模式，原先被这行挡在外面，
+    // 于是「选不了」的格子看起来和能点的一模一样，点下去才 toast。
+    if (!gridMultiSelect && !editMode) return undefined;
     const blockedOf = (c: unknown): boolean => {
       const cell = c as any;
       const ct = cell?.cageTypeCode ?? cell?.animalCageType;
-      if (editStaged) return !(ct === 3 || ct === 4);
+      if (editMode) return !(ct === 3 || ct === 4);
       if (pageMode === "allocate") return !allocCellVerdict(c).ok;
       if (reserveMode) return !reserveCellVerdict(c).ok;
       if (divisionMode) return ct === 1;
@@ -1470,7 +1481,7 @@ function Inner(){
     for (const d of details) add(d.grid as never);
     add(shelfDetail?.grid as never);
     return m;
-  }, [gridMultiSelect, editStaged, pageMode, reserveMode, divisionMode, archiveMode, confirmMode, allocCellVerdict, reserveCellVerdict, confirmCellVerdict, cageIdOfCell, details, shelfDetail]);
+  }, [gridMultiSelect, editMode, pageMode, reserveMode, divisionMode, archiveMode, confirmMode, allocCellVerdict, reserveCellVerdict, confirmCellVerdict, cageIdOfCell, details, shelfDetail]);
 
   /** 哪些笼架有可选笼位 —— 供左侧树与笼架边框高亮 */
   const selectableShelveIds = useMemo(() => {
@@ -1561,8 +1572,11 @@ function Inner(){
       return;
     }
     // 查看模式 / 扫码确认模式（确认由扫码触发，点击格子仅查看）
-    setCell(cell);setShelfId("");
-  },[editMode,recordMode,openEditCell,dataSource]);
+    // 把笼架名附在格子上：详情弹窗要显示「201A-1 A-10」，不能只给内部坐标
+    const hintShelfName = sidHint ? (shelfMetaBySid.get(String(sidHint))?.shelveName ?? "") : "";
+    setCell(hintShelfName ? ({ ...cell, _shelfName: hintShelfName } as CageShelfCell) : cell);
+    setShelfId("");
+  },[editMode,recordMode,openEditCell,dataSource,shelfMetaBySid]);
 
   // ═══════════════════════════════════════════════════════════
   //  HANDLERS — 批量编辑（详情弹窗「编辑」态里的入口，与状态模式无关）
@@ -3531,30 +3545,28 @@ function Inner(){
                       return <div className="rounded-twin-md border-2 px-3 py-2.5" style={{borderColor:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold text-[var(--twin-ink)]">健康异常严重程度</span>
-                          <span className="text-[10px] text-[var(--twin-mute)]">单选 · 可勾瘙痒 · 随「健康异常」开关</span>
+                          <span className="text-[10px] text-[var(--twin-mute)]">单选 · 可加瘙痒 · 随「健康异常」开关</span>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {severityOptions.map(o=>{
                             const on=cur===o.itemCode;
-                            return <div key={o.itemCode} className="relative rounded-twin-md border-2 px-2.5 py-1"
-                              style={{borderColor:on?"var(--twin-primary)":"var(--twin-hairline)"}}>
+                            return <div key={o.itemCode} className="flex items-center gap-2 rounded-twin-md border-2 px-2.5 py-1 transition-colors"
+                              style={{
+                                borderColor:on?"#2d5cf7":"var(--twin-hairline)",
+                                background:on?"#2d5cf7":"var(--twin-canvas)",
+                              }}>
                               <button type="button"
                                 onClick={()=>void applyEditSeverity(cell,sid,on?null:o.itemCode,on?false:curItch)}
                                 className={`text-[11px] font-semibold transition hover:brightness-95 ${
-                                  on?"text-[var(--twin-primary)]":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                                  on?"text-white":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
                                 }`}>
-                                {on?"✓ ":""}{o.itemLabel}
+                                {o.itemLabel}
                               </button>
-                              {/* 勾选框贴在本档右上角：勾上 = 该档 + 瘙痒（瘙痒不单独立档，数据上仍是一个布尔） */}
-                              <label className="absolute -right-1.5 -top-2 flex cursor-pointer items-center gap-0.5 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 text-[9px] font-semibold"
-                                style={{color:(on&&curItch)?"var(--twin-primary)":"var(--twin-mute)"}}
-                                title={`勾上 = ${o.itemLabel} + ${HEALTH_ITCH_LABEL}`}>
-                                <input type="checkbox" className="h-2.5 w-2.5"
-                                  style={{accentColor:"var(--twin-primary)"}}
-                                  checked={on&&curItch}
-                                  onChange={()=>void applyEditSeverity(cell,sid,o.itemCode,!(on&&curItch))}/>
-                                {HEALTH_ITCH_LABEL}
-                              </label>
+                              {/* 瘙痒贴在同一行：点亮 = 该档 + 瘙痒（染色块，不用勾选框） */}
+                              <ItchChip
+                                on={on && curItch}
+                                onToggle={() => void applyEditSeverity(cell, sid, o.itemCode, !(on && curItch))}
+                              />
                             </div>;
                           })}
                         </div>
@@ -3588,7 +3600,7 @@ function Inner(){
                 {/* 面板自己的吸顶条就是「笼盒详情 · 位号 + 关闭」，外面这条标题行是重复的，
                     而且它会把吸顶条顶下去（滚动后吸顶条盖住它）—— 去掉，只留面板那一行。 */}
                 {dataSource==="local"
-                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={canManageStatusPhotos} onBatchEdit={enterBatchPick}/>
+                  ? <LocalDetailPanel cell={cell} shelfName={(cell as any)._shelfName ?? (shelfId ? (shelfMetaBySid.get(String(shelfId))?.shelveName ?? "") : "")} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={canManageStatusPhotos} onBatchEdit={enterBatchPick}/>
                   : <div className="grid grid-cols-2 gap-2 p-3 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
                   return<div key={k} className={`rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 ${k==="CageBoxQrCode"?"col-span-2":""}`}><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="mt-0.5 flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1 break-all text-[var(--twin-ink)]">{display}</div>{k==="CageBoxQrCode"&&qr!==""&&<div className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1"><QRCodeSVG value={qr} size={80} level="M" includeMargin={false}/></div>}</div></div>;
                 })}</div>
@@ -3609,7 +3621,7 @@ function Inner(){
     {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-[min(760px,94vw)] h-[min(760px,82vh)] max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
-          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={canManageStatusPhotos} onBatchEdit={enterBatchPick}/>
+          ? <LocalDetailPanel cell={cell} shelfName={(cell as any)._shelfName ?? (shelfId ? (shelfMetaBySid.get(String(shelfId))?.shelveName ?? "") : "")} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={canManageStatusPhotos} onBatchEdit={enterBatchPick}/>
           : <>
         <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>关闭</button></div>
         <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
@@ -3846,7 +3858,11 @@ function Inner(){
           </span>
           <div className="min-w-0">
             <DialogTitle className="text-[15px] font-bold leading-tight text-[var(--twin-ink)]">
-              笼位状态与照片 · {editDialogCell ? displayPosition(editDialogCell.position) : ""}
+              笼位状态与照片 · {(() => {
+                const sid = editDialogShelfId ?? (editDialogCell ? findShelfIdForCell(editDialogCell) : "");
+                const nm = sid ? (shelfMetaBySid.get(String(sid))?.shelveName ?? "") : "";
+                return `${nm ? nm + " " : ""}${editDialogCell ? displayPosition(editDialogCell.position) : ""}`;
+              })()}
             </DialogTitle>
             <DialogDescription className="sr-only">选择笼位状态，并为每个状态单独归档照片</DialogDescription>
             <div className="mt-0.5 text-[11px] text-[var(--twin-mute)]">
@@ -3967,34 +3983,25 @@ function Inner(){
           return <div className="rounded-twin-md border-2 px-3 py-2.5" style={{borderColor:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-[var(--twin-ink)]">健康异常严重程度</span>
-              <span className="text-[10px] text-[var(--twin-mute)]">单选 · 可勾瘙痒 · 随「健康异常」开关</span>
+              <span className="text-[10px] text-[var(--twin-mute)]">单选 · 可加瘙痒 · 随「健康异常」开关</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {severityOptions.map(o => {
                 const on = cur === o.itemCode;
-                return <div key={o.itemCode} className="relative rounded-twin-md border-2 px-3 py-1.5 transition-colors"
-                  style={{borderColor:on?"var(--twin-primary)":"var(--twin-hairline)", background:on?"color-mix(in srgb, var(--twin-primary) 8%, var(--twin-canvas))":"var(--twin-canvas)"}}>
+                return <div key={o.itemCode} className="flex items-center gap-2 rounded-twin-md border-2 px-3 py-1.5 transition-colors"
+                  style={{borderColor:on?"#2d5cf7":"var(--twin-hairline)", background:on?"#2d5cf7":"var(--twin-canvas)"}}>
                   <button type="button" disabled={!canEditStatus}
                     onClick={()=>void applyEditSeverity(editDialogCell,sid,on?null:o.itemCode,on?false:curItch)}
-                    className={`flex items-center gap-1.5 text-[11px] font-semibold transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 ${
-                      on?"text-[var(--twin-primary)]":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                    className={`text-[11px] font-semibold transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      on?"text-white":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
                     }`}>
-                    <span className="grid size-4 shrink-0 place-items-center rounded-full border-2"
-                      style={on?{background:"var(--twin-primary)",borderColor:"var(--twin-primary)",color:"#fff"}:{borderColor:"var(--twin-hairline)",color:"transparent"}}>
-                      <Check className="size-2.5" strokeWidth={3.5}/>
-                    </span>
                     {o.itemLabel}
                   </button>
-                  {/* 勾选框贴在本档右上角：勾上 = 该档 + 瘙痒（瘙痒不单独立档，数据上仍是一个布尔） */}
-                  <label className="absolute -right-1.5 -top-2 flex cursor-pointer items-center gap-0.5 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 text-[9px] font-semibold"
-                    style={{color:(on&&curItch)?"var(--twin-primary)":"var(--twin-mute)"}}
-                    title={`勾上 = ${o.itemLabel} + ${HEALTH_ITCH_LABEL}`}>
-                    <input type="checkbox" className="h-2.5 w-2.5"
-                      style={{accentColor:"var(--twin-primary)"}}
-                      checked={on&&curItch}
-                      onChange={()=>void applyEditSeverity(editDialogCell,sid,o.itemCode,!(on&&curItch))}/>
-                    {HEALTH_ITCH_LABEL}
-                  </label>
+                  {/* 瘙痒贴在同一行：点亮 = 该档 + 瘙痒（染色块，不用勾选框） */}
+                  <ItchChip
+                    on={on && curItch}
+                    onToggle={() => void applyEditSeverity(editDialogCell, sid, o.itemCode, !(on && curItch))}
+                  />
                 </div>;
               })}
             </div>
@@ -4076,6 +4083,8 @@ function Inner(){
                 try{
                   await saveAnnotation(cageId);
                   toast.success("标注已保存");
+                  // 拍照模式是「改完就走」：保存成功即关弹窗，不用再点一次关闭
+                  setEditDialogCell(null); setStatusPhotos({}); setActionNote("");
                 }catch(e:any){toast.error("保存失败: "+(e?.message||""));}
                 finally{setActionSubmitting(false);}
               }}

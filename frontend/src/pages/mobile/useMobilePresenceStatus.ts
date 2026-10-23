@@ -1,13 +1,12 @@
 /** 首页进出状态 — 事件驱动拉取（WebSocket 通知）+ 本地秒级计时 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchMobileRoomDashboard,
   type MobileRoomAnalyzeDto,
   type MobileRoomDashboardData,
   type MobileRoomOverviewRow,
+  type ExemptStatus,
 } from "@/api/domains/mobileStudent.api";
 import { fetchStudentMobileRoomDashboard, fetchStudentMobileExemptStatus } from "@/api/domains/studentMobile.api";
-import type { ExemptStatus } from "@/api/domains/mobileStudent.api";
 import { formatExemptRemaining } from "@/constants/exemptDurationPresets";
 import {
   hasActiveAutoSignoutCountdown,
@@ -122,9 +121,7 @@ export type MobilePresenceSnapshot = {
  * @param active 首页可见时启用本地秒级 tick（切 Tab 暂停，与小程序 onHide stopPresenceTick 一致）
  */
 export function useMobilePresenceStatus(
-  token: string | undefined,
   refreshNonce = 0,
-  jwtMode = false,
   active = true,
 ): MobilePresenceSnapshot {
   const [bundle, setBundle] = useState<MobileRoomDashboardData | null>(null);
@@ -135,22 +132,8 @@ export function useMobilePresenceStatus(
 
   const load = useCallback(async (showLoading: boolean) => {
     if (showLoading) setLoading(true);
-    if (jwtMode) {
-      try {
-        const data = await fetchStudentMobileRoomDashboard();
-        setBundle(data);
-        setLastSyncedAt(Date.now());
-      } catch {
-        /* 静默 */
-      } finally {
-        setLoading(false);
-        initializedRef.current = true;
-      }
-      return;
-    }
-    if (!token) return;
     try {
-      const data = await fetchMobileRoomDashboard(token);
+      const data = await fetchStudentMobileRoomDashboard();
       setBundle(data);
       setLastSyncedAt(Date.now());
     } catch {
@@ -159,18 +142,16 @@ export function useMobilePresenceStatus(
       setLoading(false);
       initializedRef.current = true;
     }
-  }, [token, jwtMode]);
+  }, []);
 
   useEffect(() => {
     // 首次进入展示 loading；回到首页/WebSocket 静默拉取 — post-save-no-full-refresh.mdc
     void load(!initializedRef.current);
   }, [load, refreshNonce]);
 
-  /** JWT 模式：独立拉取豁免状态 */
   const [exemptState, setExemptState] = useState<ExemptStatus | null>(null);
 
   useEffect(() => {
-    if (!jwtMode) return;
     let cancelled = false;
     fetchStudentMobileExemptStatus()
       .then((data) => {
@@ -180,7 +161,7 @@ export function useMobilePresenceStatus(
         // 静默失败
       });
     return () => { cancelled = true; };
-  }, [jwtMode, refreshNonce]);
+  }, [refreshNonce]);
 
   /** 仅本地 UI 计时，不发起 HTTP；切 Tab 暂停 tick */
   useEffect(() => {
@@ -218,14 +199,8 @@ export function useMobilePresenceStatus(
       ? fromDeadline ?? analyze.autoSignoutSecondsRemaining ?? null
       : null;
 
-    // 豁免状态：Token 模式从 analyze 取，JWT 模式从独立接口取
-    let exempt: ExemptStatus | null = null;
-    if (jwtMode) {
-      exempt = exemptState;
-    } else {
-      const raw = analyze.exemptStatus;
-      exempt = (raw && raw.phase && raw.phase !== "none") ? (raw as ExemptStatus) : null;
-    }
+    // 豁免状态来自独立接口
+    let exempt: ExemptStatus | null = exemptState;
 
     // 实时计算剩余时长
     if (exempt && exempt.phase === "approved_active" && exempt.expireAt) {
@@ -250,7 +225,7 @@ export function useMobilePresenceStatus(
       lastSyncedAt,
       exemptStatus: exempt,
     };
-  }, [bundle, loading, tick, lastSyncedAt, exemptState, jwtMode]);
+  }, [bundle, loading, tick, lastSyncedAt, exemptState]);
 }
 
 /** WebSocket refresh 是否应触发进出状态重拉 */

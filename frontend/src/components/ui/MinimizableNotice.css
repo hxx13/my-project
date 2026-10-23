@@ -103,6 +103,7 @@
 .mn-extra {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   width: 100%;
   overflow: hidden;
@@ -176,6 +177,14 @@
 }
 .mn-btn--secondary:hover {
   background: var(--mn-warning-soft);
+}
+
+.mn-btn--danger {
+  background: var(--app-color-feedback-danger);
+  color: var(--app-color-text-inverse);
+}
+.mn-btn--danger:hover {
+  filter: brightness(1.08);
 }
 
 /* ── 关闭 & 最小化按钮 ── */

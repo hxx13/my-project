@@ -4,27 +4,44 @@
  * Portal 到 body 避免被父级 stacking context（sticky header 等）遮挡。
  */
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { X, Minus, Plus, ChevronDown } from "lucide-react";
+import { X, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { webImageSrc } from "@/utils/mediaUrl";
-import type { MaterialSpecPickerItem, MultiSpecSelections } from "@/utils/materialSpecHelpers";
+import type { MaterialSpecPickerItem } from "@/utils/materialSpecHelpers";
 import {
   buildSpecCartKey,
-  filterCombosByMultiSelections,
   generateSpecCombos,
-  hasAnyMultiSpecSelection,
-  isMultiSpecSelectionReady,
-  isSpecOptionSelected,
   itemIdFromCartKey,
   maxQtyForMaterialItem,
   parseSpecDimensions,
   sumCartQtyForItem,
-  toggleMultiSpecOption,
 } from "@/utils/materialSpecHelpers";
+
+/** 小程序同款配色：弹窗 Portal 到 body，必须自带令牌，否则吃不到页面作用域里的覆盖 */
+export const MINI_THEME: CSSProperties = {
+  "--student-primary": "#2563eb",
+  "--student-primary-foreground": "#ffffff",
+  "--student-primary-hover": "#1d4ed8",
+  "--student-primary-muted": "rgba(37,99,235,0.14)",
+  "--student-canvas": "#ffffff",
+  "--student-canvas-soft": "#f6f7fb",
+  "--student-canvas-soft-2": "#f1f3f7",
+  "--student-surface": "#ffffff",
+  "--student-hairline": "#eef0f4",
+  "--student-ink": "#1e293b",
+  "--student-body": "#334155",
+  "--student-mute": "#64748b",
+  "--student-danger": "#ef4444",
+  "--student-radius-sm": "8px",
+  "--student-radius-md": "14px",
+  "--student-primary-soft": "#eff6ff",
+} as CSSProperties;
 
 interface SpecSheetProps {
   open: boolean;
+  theme?: CSSProperties;
   onOpenChange: (open: boolean) => void;
   item: MaterialSpecPickerItem;
   cart: Record<string, number>;
@@ -113,14 +130,9 @@ function SheetQtyStepper({
   );
 }
 
-function selectedSummary(selections: MultiSpecSelections, dimName: string): string | null {
-  const opts = selections[dimName];
-  if (!opts?.length) return null;
-  return opts.join("、");
-}
-
 export function SpecSheet({
   open,
+  theme,
   onOpenChange,
   item,
   cart,
@@ -129,15 +141,7 @@ export function SpecSheet({
   onAddPlain,
   onDecPlain,
 }: SpecSheetProps) {
-  const [selections, setSelections] = useState<MultiSpecSelections>({});
-  const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
-
   const [draftCart, setDraftCart] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    setSelections({});
-    setExpandedDims(new Set());
-  }, [item.id]);
 
   useEffect(() => {
     if (open) {
@@ -158,32 +162,21 @@ export function SpecSheet({
 
   const dimensions = useMemo(() => parseSpecDimensions(item.specSchema), [item.specSchema]);
   const allCombos = useMemo(() => generateSpecCombos(dimensions), [dimensions]);
-  const selectionReady = isMultiSpecSelectionReady(dimensions, selections);
-  const activeCombos = useMemo(() => {
-    if (!selectionReady) return [];
-    return filterCombosByMultiSelections(allCombos, selections);
-  }, [allCombos, selectionReady, selections]);
+  /** 全部规格组合直接列出：有没有选由数量决定，不设前置选择门槛 */
+  const activeCombos = allCombos;
 
   const maxQty = maxQtyForMaterialItem(item);
   const soldOut = maxQty <= 0;
   const specRequired = Number(item.specRequired) === 1;
-  const showPlainRow = !specRequired && !hasAnyMultiSpecSelection(selections);
+  const showPlainRow = !specRequired && dimensions.length === 0;
   const itemCartQty = sumCartQtyForItem(draftCart, item.id);
-
-  const toggleDimExpanded = (dimName: string) => {
-    setExpandedDims((prev) => {
-      const next = new Set(prev);
-      if (next.has(dimName)) next.delete(dimName);
-      else next.add(dimName);
-      return next;
-    });
-  };
 
   if (!open) return null;
 
   return createPortal(
     <div
       className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
+      style={theme}
       role="dialog"
       aria-modal="true"
       aria-labelledby="spec-sheet-title"
@@ -196,7 +189,7 @@ export function SpecSheet({
       <div
         className={cn(
           "relative w-full max-w-md max-h-[min(85vh,640px)] flex flex-col overflow-hidden",
-          "rounded-[var(--student-radius-md,12px)] bg-[var(--student-canvas)] shadow-[var(--student-shadow-modal)]",
+          "rounded-[var(--student-radius-md,14px)] bg-[var(--student-surface)] shadow-2xl",
           "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-200",
         )}
       >
@@ -237,72 +230,9 @@ export function SpecSheet({
             </div>
           </div>
 
-          {dimensions.length > 0 && (
-            <div className="space-y-2">
-              {dimensions.map((dim) => {
-                const expanded = expandedDims.has(dim.name);
-                const summary = selectedSummary(selections, dim.name);
-                return (
-                  <div
-                    key={dim.name}
-                    className="rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] overflow-hidden"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleDimExpanded(dim.name)}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 min-h-[44px] text-left hover:bg-[var(--student-canvas-soft)] transition-colors"
-                      aria-expanded={expanded}
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "size-4 shrink-0 text-[var(--student-mute)] transition-transform motion-safe:duration-200",
-                          !expanded && "-rotate-90",
-                        )}
-                      />
-                      <span className="flex-1 min-w-0 text-[13px] font-semibold text-[var(--student-ink)]">
-                        {dim.name}
-                      </span>
-                      {summary && !expanded && (
-                        <span className="shrink-0 max-w-[45%] truncate text-[12px] text-[var(--student-primary)]">
-                          {summary}
-                        </span>
-                      )}
-                    </button>
-                    {expanded && (
-                      <div className="px-3 pb-3 pt-0 border-t border-[var(--student-hairline)]">
-                        <div className="flex flex-wrap gap-2 pt-3">
-                          {dim.options.map((opt) => {
-                            const active = isSpecOptionSelected(selections, dim.name, opt);
-                            return (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() =>
-                                  setSelections((prev) => toggleMultiSpecOption(prev, dim.name, opt))
-                                }
-                                className={cn(
-                                  "px-3.5 py-2 min-h-[40px] rounded-[var(--student-radius-sm)] text-[13px] font-medium border transition-colors",
-                                  active
-                                    ? "border-[var(--student-primary)] bg-[var(--student-primary-soft)] text-[var(--student-primary)] border-2"
-                                    : "border-[var(--student-hairline)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]",
-                                )}
-                              >
-                                {opt}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {selectionReady && activeCombos.length > 0 && (
+          {activeCombos.length > 0 && (
             <div className="space-y-2 pt-1">
-              <p className="text-[12px] font-medium text-[var(--student-mute)]">已选规格组合</p>
+              <p className="text-[12px] font-medium text-[var(--student-mute)]">规格</p>
               {activeCombos.map((combo) => (
                 <div
                   key={combo.key}
@@ -327,12 +257,6 @@ export function SpecSheet({
                 </div>
               ))}
             </div>
-          )}
-
-          {!selectionReady && dimensions.length > 0 && !showPlainRow && (
-            <p className="text-[12px] text-[var(--student-mute)] text-center py-1">
-              展开上方规格分类并选择后，将显示可申领的组合
-            </p>
           )}
 
           {showPlainRow && (

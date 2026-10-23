@@ -15,6 +15,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -63,10 +64,85 @@ public class DahuaOpenApiService {
         return all;
     }
 
+    /** 门组列表（带 doorGroupDetail 通道明细，门组分配/种子用） */
+    public List<Map<String, Object>> fetchDoorGroupsWithDetails() {
+        List<Map<String, Object>> all = new ArrayList<>();
+        int pageNum = 1;
+        while (pageNum <= 50) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("pageNum", pageNum);
+            body.put("pageSize", 100);
+            Map<String, Object> resp = postRaw("/evo-apigw/evo-accesscontrol/1.0.0/doorGroup/page", body);
+            Map<String, Object> data = asMap(resp.get("data"));
+            List<Map<String, Object>> pageData = asListOfMap(data.get("pageData"));
+            all.addAll(pageData);
+            if (pageData.size() < 100) break;
+            pageNum++;
+        }
+        return all;
+    }
+
+    public Map<String, Object> addDoorGroup(Map<String, Object> body) {
+        return postRaw("/evo-apigw/evo-accesscontrol/1.0.0/doorGroup/add", body);
+    }
+
+    public Map<String, Object> updateDoorGroup(Map<String, Object> body) {
+        return postRaw("/evo-apigw/evo-accesscontrol/1.0.0/card/accessControl/doorGroup/update", body);
+    }
+
+    public Map<String, Object> deleteDoorGroups(List<Long> doorGroupIds) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("doorGroupIds", doorGroupIds);
+        return postRaw("/evo-apigw/evo-accesscontrol/1.0.0/doorGroup/delete", body);
+    }
+
+    /** 设备组织树（门组归属组织下拉用） */
+    public Map<String, Object> fetchDeviceOrgTree() {
+        return postRaw("/evo-apigw/evo-brm/1.2.1/tree/client/device-org", new HashMap<>());
+    }
+
+    /** 大华人员检索（按部门 / 关键字） */
+    public Map<String, Object> selectPersons(Map<String, Object> body) {
+        return postRaw("/evo-apigw/evo-accesscontrol/1.0.0/card/person/select/page", body);
+    }
+
+    /** 按人授权列表（带卡号、授权状态、人员状态、部门路径等完整字段） */
+    public Map<String, Object> listPersonAuthoritiesPage(Map<String, Object> body) {
+        return postRaw("/evo-apigw/evo-accesscontrol/1.0.0/card/accessControl/personAuthority/page", body);
+    }
+
+    /** 删除人员（软删，可在已删除人员中恢复）；deleteCardFlag=1 时连带删除卡片 */
+    public Map<String, Object> deletePersons(Map<String, Object> body) {
+        return postRaw("/evo-apigw/evo-brm/1.2.0/person/delete", body);
+    }
+
+    /** 人员分页（statusList=0 时取已删除人员） */
+    public Map<String, Object> listPersonPage(Map<String, Object> body) {
+        return postRaw("/evo-apigw/evo-brm/1.2.0/person/page", body);
+    }
+
+    public Map<String, Object> rollbackPersons(Map<String, Object> body) {
+        return postRaw("/evo-apigw/evo-brm/1.2.0/person/recycle/rollback", body);
+    }
+
+    public Map<String, Object> purgePersons(Map<String, Object> body) {
+        return rawExchange("/evo-apigw/evo-brm/1.2.0/person/recycle/delete", HttpMethod.DELETE, body);
+    }
+
     /**
-     * 分页拉取设备通道列表。deviceType 传 null 表示不限小类（大华按精确小类过滤，
-     * 门禁大类下小类有 8_1、8_16 等多种，只传一种会漏）。pageSize 最大 1000。
+     * 修改单个通道信息（名称）。平台的专用接口，只需 channelName/channelCode/ownerCode，
+     * 不需要像设备页那样整机回写；门禁通道与视频通道都实测可用。
      */
+    public Map<String, Object> updateChannelInfo(Map<String, Object> body) {
+        return rawExchange("/evo-apigw/evo-brm/1.2.1/device/channel", HttpMethod.PUT, body);
+    }
+
+    /** 某个人当前的门禁权限明细 */
+    public Map<String, Object> fetchPersonAuthorities(String personCode) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("personCode", personCode);
+        return postRaw("/evo-apigw/evo-accesscontrol/1.0.0/card/accessControl/personAuthority/detail", body);
+    }
     public List<Map<String, Object>> fetchAllDeviceChannels(Integer deviceCategory, Integer deviceType) {
         List<Map<String, Object>> all = new ArrayList<>();
         int pageNum = 1;
@@ -97,6 +173,32 @@ public class DahuaOpenApiService {
         return all;
     }
 
+    /** 平台视频组织树（ICC 客户端实时预览左侧树的来源）：各组织节点及其通道 */
+    public List<Map<String, Object>> fetchVideoOrgTree(String rootOrgCode) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("channelTypes", List.of(1, 2, 0));
+        body.put("orgCode", rootOrgCode == null ? "" : rootOrgCode);
+        body.put("displayType", 0);
+        Map<String, Object> resp = postRaw("/evo-apigw/evo-brm/1.2.1/tree/client/device-org", body);
+        if (!isSuccess(resp)) {
+            return List.of();
+        }
+        return asListOfMap(asMap(resp.get("data")).get("organizations"));
+    }
+
+    /** 设备名称（如 `SY-NVR-07`）；取不到返回 null */
+    public String fetchDeviceName(String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return null;
+        }
+        Map<String, Object> resp = getRaw("/evo-apigw/evo-brm/1.2.1/device/" + deviceCode.trim());
+        if (!isSuccess(resp)) {
+            return null;
+        }
+        Object name = asMap(resp.get("data")).get("deviceName");
+        return name == null ? null : String.valueOf(name);
+    }
+
     public Long generatePersonId() {
         Map<String, Object> resp = get("/evo-apigw/evo-brm/1.0.0/person/generate-id");
         Map<String, Object> data = asMap(resp.get("data"));
@@ -105,6 +207,25 @@ public class DahuaOpenApiService {
 
     public Map<String, Object> addPerson(Map<String, Object> body) {
         return post("/evo-apigw/evo-brm/1.2.0/person/subsystem/add", body);
+    }
+
+    /** 局部更新人员：只提交需要改的字段，未提交的字段保持不变 */
+    public Map<String, Object> updatePerson(Map<String, Object> body) {
+        return exchange("/evo-apigw/evo-brm/1.2.0/person/subsystem/update", HttpMethod.PUT, body);
+    }
+
+    public Long generateCardId() {
+        Map<String, Object> resp = get("/evo-apigw/evo-brm/1.0.0/card/generate-id");
+        Map<String, Object> data = asMap(resp.get("data"));
+        return parseLong(data.get("id"));
+    }
+
+    public Map<String, Object> addCard(Map<String, Object> body) {
+        return post("/evo-apigw/evo-brm/1.0.0/card/add", body);
+    }
+
+    public Map<String, Object> updateCard(Map<String, Object> body) {
+        return putRaw("/evo-apigw/evo-brm/1.0.0/card/update", body);
     }
 
     public Map<String, Object> batchAuthority(Map<String, Object> body) {
@@ -242,8 +363,9 @@ public class DahuaOpenApiService {
         return post("/evo-apigw/evo-accesscontrol/1.0.0/card/accessControl/personAuthority/deleteSinglePrivilege", body);
     }
 
+    /** 激活卡片；返回原始响应，由调用方判断（已激活时平台返回 28140006） */
     public Map<String, Object> activateCard(Map<String, Object> body) {
-        return exchange("/evo-apigw/evo-brm/1.0.0/card/active", HttpMethod.PUT, body);
+        return putRaw("/evo-apigw/evo-brm/1.0.0/card/active", body);
     }
 
     public Map<String, Object> controlDoor(String mode, List<String> channelCodeList) {

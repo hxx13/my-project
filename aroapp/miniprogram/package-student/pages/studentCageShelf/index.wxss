@@ -272,6 +272,41 @@ page,
   white-space: nowrap;
 }
 
+/* 列表行内特殊状态小点：跟名称同一行、靠左，位于进度条上方 */
+.list-status-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-left: 10rpx;
+  flex-shrink: 0;
+}
+/* 统计文案那一行：圆点在左、统计在右，并排一行（宽度与下方进度条一致） */
+.list-metric-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+  min-width: 0;
+}
+.list-metric-line .list-status-dots {
+  margin-left: 0;
+}
+.list-metric-line--room { width: 90%; align-self: flex-end; }
+.list-metric-line--grp { width: 70%; align-self: flex-end; }
+.list-metric-line--shelf { width: 100%; justify-content: space-between; gap: 6rpx; }
+/* 卡片里的统计块原本写死 width:100%，会把圆点挤到同一侧；放进这一行后改为弹性占满、文字靠右 */
+.list-metric-line--shelf .shelf-card-stats {
+  width: auto;
+  flex: 1;
+  justify-content: flex-end;
+}
+.list-status-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* 占比条图例（列表首行，随内容滚走，不占吸顶空间） */
 .list-ratio-legend {
   display: flex;
@@ -298,6 +333,13 @@ page,
   font-size: 22rpx;
   /* #94a3b8 在 #f6f7fb 上只有 ~2.8:1，小字不达标；压到 --body 那档约 5:1 */
   color: var(--body);
+}
+
+/* 详情（网格）页顶部那条特殊状态图例 */
+.grid-top-legend {
+  flex-shrink: 0;
+  padding: 10rpx 24rpx 8rpx;
+  background: var(--canvas);
 }
 
 /* 列表首行曾放过一枚「我的申请」大胶囊，撤掉后入口挪进吸顶搜索行（.list-collapse-all-btn /
@@ -1051,14 +1093,22 @@ page,
 /* 特殊饲养明细角标（+食 / −水）—— 贴右上角，与类型指示灯同角：明细强绑定特殊饲养，
    该格必是「饲养中」，而 type 3 不点灯，两者不会同时出现。
    字号比认领徽标（16rpx）再小一档、只贴右边，给居中的位号（26rpx）让位。 */
-.gcell-sf {
+/* 右上角两族角标并排：健康异常（严重程度/瘙痒）在左，特殊饲养明细在右，各自纵排 */
+.gcell-badges {
   position: absolute;
   top: 2rpx;
   right: 2rpx;
   display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 2rpx;
+  z-index: 2;
+}
+
+.gcell-badge-col {
+  display: flex;
   flex-direction: column;
   align-items: flex-end;
-  z-index: 2;
 }
 
 .gcell-sf-pill {
@@ -1534,12 +1584,12 @@ page,
   bottom: 0;
   z-index: 3;
   pointer-events: none;
-  background: repeating-linear-gradient(
+  background: rgba(220, 38, 38, 0.07) repeating-linear-gradient(
     45deg,
-    rgba(220, 38, 38, 0.28) 0,
-    rgba(220, 38, 38, 0.28) 2rpx,
-    rgba(220, 38, 38, 0) 2rpx,
-    rgba(220, 38, 38, 0) 16rpx
+    rgba(220, 38, 38, 0.45) 0,
+    rgba(220, 38, 38, 0.45) 3rpx,
+    rgba(220, 38, 38, 0) 3rpx,
+    rgba(220, 38, 38, 0) 14rpx
   );
 }
 
@@ -2535,16 +2585,17 @@ page,
   border-radius: 22rpx;
   box-shadow: 0 12rpx 44rpx rgba(15, 23, 42, 0.16), 0 2rpx 6rpx rgba(15, 23, 42, 0.06);
 }
-/* 状态标注：底部抽屉（80% 屏高），只影响这一处；查看/记录弹窗仍用上面的居中壳 */
+/* 状态标注：底部抽屉，只影响这一处；查看/记录弹窗仍用上面的居中壳。
+   高度按内容走（内容少时不留一大片空底），最多 80% 屏高；超出由 .cs-body 自己滚动。 */
 .cs-sheet--drawer {
   width: 100vw;
   max-width: none;
-  height: 80vh;
+  height: auto;
   max-height: 80vh;
   border-radius: 24rpx 24rpx 0 0;
 }
 .cs-sheet--drawer .cs-body {
-  max-height: none;
+  max-height: 64vh;
 }
 
 /* 编辑态：不再套红环，头部染一层极浅蓝 + 徽标换成蓝底，够醒目又不吵 */
@@ -2563,6 +2614,22 @@ page,
   display: flex;
   align-items: center;
   gap: 14rpx;
+}
+
+/* 头部这一行：位置 + 保存类按钮 + 关闭。按钮压到 52rpx 档，别把位号挤出省略号 */
+.cs-head-acts {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.cs-head-acts .cs-btn {
+  height: 52rpx;
+  padding: 0 18rpx;
+  border-radius: 10rpx;
+  font-size: 21rpx;
+  font-weight: 600;
 }
 
 .cs-id-pos {
@@ -2614,6 +2681,13 @@ page,
   height: 12rpx;
   border-radius: 50%;
   background: var(--c);
+}
+
+/* 父状态后面的子值（轻微 · 瘙痒 / 需加食 …） */
+.cs-tick-sub {
+  margin-left: 6rpx;
+  font-size: 19rpx;
+  color: var(--mute);
 }
 
 .cs-badge {
@@ -2676,19 +2750,10 @@ page,
   font-size: 21rpx;
 }
 
-/* 不可编辑的原因：占左侧、可折行、极淡，不与主操作抢视线 */
-.cs-dock-hint {
-  flex: 1;
-  min-width: 0;
-  padding-right: 12rpx;
-  font-size: 20rpx;
-  color: var(--faint);
-  line-height: 1.35;
-}
-
 .cs-dock-msg--ok { color: var(--ok); }
 .cs-dock-msg--err { color: var(--danger); }
 
+/* 关键信息表单那条底栏仍用它把保存按钮推到右侧 */
 .cs-dock-push { margin-left: auto; }
 
 /* ================================================================== */
@@ -3202,6 +3267,30 @@ page,
   gap: 10rpx;
 }
 
+/* 详情页大图：完整显示（aspectFit），高度约四成屏；点图进全屏灯箱 */
+.cs-detail-media {
+  margin-bottom: 18rpx;
+  padding: 8rpx;
+  border-radius: 16rpx;
+  background: #0f172a;
+  overflow: hidden;
+}
+.cs-detail-media-media {
+  display: block;
+  width: 100%;
+  height: 40vh;
+  max-height: 520rpx;
+}
+.cs-detail-media-foot {
+  padding: 6rpx 8rpx 2rpx;
+  text-align: right;
+  font-size: 19rpx;
+  color: rgba(255, 255, 255, 0.7);
+}
+.cs-photo--active {
+  box-shadow: 0 0 0 4rpx var(--accent);
+}
+
 /* 分状态照片：一档一组，标题用该状态的强调色，和上面的状态开关一眼对得上 */
 .cs-photo-hint {
   margin-bottom: 12rpx;
@@ -3211,6 +3300,10 @@ page,
 }
 .cs-photo-group:first-of-type {
   margin-top: 0;
+}
+/* 状态胶囊与下方缩略图之间留一口气，别贴在一起 */
+.cs-photo-group > .cs-tick {
+  margin-bottom: 14rpx;
 }
 .cs-photo-group-hd {
   display: flex;
@@ -3235,8 +3328,8 @@ page,
 }
 
 .cs-photo {
-  width: 100rpx;
-  height: 100rpx;
+  width: 140rpx;
+  height: 140rpx;
   border-radius: 12rpx;
   background: var(--fill);
 }
@@ -3293,8 +3386,8 @@ page,
 }
 
 .cs-photo-add {
-  width: 100rpx;
-  height: 100rpx;
+  width: 140rpx;
+  height: 140rpx;
   border: none;
   border-radius: 12rpx;
   background: var(--fill);
@@ -3683,19 +3776,20 @@ page,
 .cs-stat-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12rpx;
+  gap: 14rpx;
 }
 
+/* 磁贴：整块实底，靠底色 + 状态点表达「已标」，不再用描边 + 单字大字块 */
 .cs-stat {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 14rpx;
-  min-height: 80rpx;
-  padding: 0 18rpx;
-  border: 1rpx solid var(--line);
-  border-radius: 8rpx;
-  background: transparent;
+  justify-content: space-between;
+  gap: 12rpx;
+  min-height: 92rpx;
+  padding: 0 22rpx;
+  border-radius: 14rpx;
+  background: var(--fill-2);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -3704,45 +3798,46 @@ page,
   opacity: 0.75;
 }
 
-/* 状态字块：反白单字，没标记时是描边空块 */
-.cs-stat-g {
-  position: relative;
-  flex-shrink: 0;
-  width: 44rpx;
-  height: 44rpx;
-  border: 1rpx solid var(--line);
-  border-radius: 6rpx;
-  background: var(--paper);
-  color: var(--faint);
-  font-family: monospace;
-  font-size: 22rpx;
-  font-weight: 700;
+.cs-stat-l {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12rpx;
+  min-width: 0;
+}
+
+.cs-stat-dot {
+  flex-shrink: 0;
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: var(--c);
+  opacity: 0.3;
 }
 
 .cs-stat-t {
   min-width: 0;
-  font-size: 22rpx;
+  font-size: 25rpx;
   font-weight: 500;
-  color: var(--mute);
-  letter-spacing: 1rpx;
+  color: var(--body);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* 已标记：用该状态自己的色（继承网格），不是一个统一的绿 */
+.cs-stat-ck {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--c);
+}
+
+/* 已标记：用该状态自己的浅底（继承网格），色点与文字一起实起来 */
 .cs-stat--on {
-  border-color: var(--c);
   background: var(--c-bg, var(--fill));
 }
 
-.cs-stat--on .cs-stat-g {
-  background: var(--c);
-  border-color: var(--c);
-  color: #fff;
+.cs-stat--on .cs-stat-dot {
+  opacity: 1;
 }
 
 .cs-stat--on .cs-stat-t {
@@ -3763,26 +3858,13 @@ page,
   border-color: transparent var(--c) transparent transparent;
 }
 
-/* 本次移除：虚框 + 斜杠划过字块 + 文字删除线 */
+/* 本次移除：灰底 + 文字删除线（不再用虚框） */
 .cs-stat--rm {
-  border-style: dashed;
-  border-color: var(--mute);
+  background: var(--fill);
 }
 
-.cs-stat--rm .cs-stat-g {
-  color: var(--mute);
-  border-color: var(--mute);
-  background: var(--paper);
-}
-
-.cs-stat-strike {
-  position: absolute;
-  left: -2rpx;
-  right: -2rpx;
-  top: 50%;
-  height: 2rpx;
-  background: var(--mute);
-  transform: rotate(-45deg);
+.cs-stat--rm .cs-stat-dot {
+  opacity: 0.25;
 }
 
 .cs-stat--rm .cs-stat-t {
@@ -3982,21 +4064,42 @@ page,
 .cs-detail-chip--add { font-weight: 700; }
 .cs-detail-chip--rm { text-decoration: line-through; opacity: 0.6; }
 
-/* 严重程度每档：外面包一层定位容器，右上角挂「瘙痒」勾选框（勾上 = 该档 + 瘙痒） */
-.cs-sev-wrap { position: relative; margin-top: 10rpx; }
+/* 严重程度每档：整卡一个实底，「瘙痒」是卡里的第二段（勾上 = 该档 + 瘙痒），
+   不再挂一颗脱离档位的描边勾选框 */
+.cs-sev-grid { display: flex; flex-wrap: wrap; gap: 12rpx; }
+.cs-sev {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  height: 64rpx;
+  padding: 0 14rpx 0 18rpx;
+  border-radius: 12rpx;
+  background: var(--fill-2);
+  box-sizing: border-box;
+}
+.cs-sev-main {
+  display: flex;
+  align-items: center;
+  font-size: 23rpx;
+  color: var(--mute);
+}
+/* 选中：整卡实色主色 + 白字 —— 只染浅底时，不勾瘙痒几乎看不出选中 */
+.cs-sev--on { background: var(--accent); }
+.cs-sev--on .cs-sev-main { color: #fff; font-weight: 600; }
+.cs-sev--rm .cs-sev-main { color: var(--mute); text-decoration: line-through; }
 .cs-sev-itch {
-  position: absolute;
-  right: -8rpx;
-  top: -16rpx;
-  padding: 0 8rpx;
-  border: 2rpx solid var(--line-strong);
-  border-radius: 999rpx;
-  background: #fff;
-  font-size: 18rpx;
-  line-height: 28rpx;
+  display: flex;
+  align-items: center;
+  height: 44rpx;
+  padding: 0 14rpx;
+  border-radius: 8rpx;
+  background: var(--paper);
+  font-size: 20rpx;
   color: var(--faint);
 }
-.cs-sev-itch--on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* 瘙痒是这一档的子值：关=白底灰字；开=紫色实底白字（与健康异常角标同族，
+   也和档位自身的选中色区分开）。配色表达状态，不再打勾 */
+.cs-sev-itch--on { background: #8b5cf6; color: #fff; font-weight: 700; }
 
 /* 导航栏右侧操作（图例 / 我的申请）：走 subpage-nav-bar 的命名插槽，
    替代原来独占一行的顶部操作栏（模式切换已交给左下角模式岛、扫码入口右下角 FAB 已有） */

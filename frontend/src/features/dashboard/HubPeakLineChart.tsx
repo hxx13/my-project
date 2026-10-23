@@ -7,6 +7,7 @@ import {
     hexToRgba,
     readDashboardNightChartPalette,
 } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+import { useHidePuxi } from "@/features/dashboard/useHidePuxi";
 
 interface HubPeakLineChartProps {
     data: LineStats;
@@ -15,6 +16,7 @@ interface HubPeakLineChartProps {
 export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
     const chartRef = useRef<HTMLDivElement>(null);
     const visual = useDashboardVisual();
+    const hidePuxi = useHidePuxi();
 
     useEffect(() => {
         if (!chartRef.current || !data) return;
@@ -24,7 +26,7 @@ export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
             chart = echarts.init(chartRef.current);
         }
 
-        const option = visual.sciFi
+        const baseOption = visual.sciFi
             ? {
                   backgroundColor: "transparent",
                   title: {
@@ -280,6 +282,18 @@ export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
                   ],
               };
 
+        // 隐藏浦西：图例与曲线都只留浦东
+        const option = hidePuxi
+            ? {
+                  ...baseOption,
+                  legend: {
+                      ...baseOption.legend,
+                      data: baseOption.legend.data.filter((name) => name !== "浦西"),
+                  },
+                  series: baseOption.series.filter((s) => s.name !== "浦西"),
+              }
+            : baseOption;
+
         chart.setOption(option, { notMerge: true });
 
         const handleResize = () => chart.resize();
@@ -288,7 +302,7 @@ export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
         return () => {
             window.removeEventListener("resize", handleResize);
         };
-    }, [data, visual.sciFi, visual.night]);
+    }, [data, visual.sciFi, visual.night, hidePuxi]);
 
     return (
         <div

@@ -35,9 +35,9 @@ interface UseMobileSocketReturn {
 /**
  * 手机端 HTML5 WebSocket：
  * - MOBILE_ALERT：全局广播
- * - MOBILE_USER_NOTIFY：携带 mobileToken 时接收本人物资/延迟审核等推送
+ * - MOBILE_USER_NOTIFY：按当前登录账号接收本人物资/延迟审核等推送
  */
-export function useMobileSocket(mobileToken?: string, jwtMode = false): UseMobileSocketReturn {
+export function useMobileSocket(): UseMobileSocketReturn {
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [lastAlert, setLastAlert] = useState<MobileAlert | null>(null);
@@ -45,17 +45,11 @@ export function useMobileSocket(mobileToken?: string, jwtMode = false): UseMobil
 
   useEffect(() => {
     const socketUrl = resolveSocketUrl();
-    const query: Record<string, string> = {};
-    if (jwtMode) {
-      query.channel = "student";
-      query.token = authStorage.getToken();
-    } else {
-      query.channel = "mobile";
-      if (mobileToken?.trim()) {
-        query.mobileToken = mobileToken.trim();
-      }
-    }
-    query.v = APP_BUILD_ID;
+    const query: Record<string, string> = {
+      channel: "student",
+      token: authStorage.getToken() || "",
+      v: APP_BUILD_ID,
+    };
     const socket = io(socketUrl, {
       ...SOCKET_IO_CLIENT_OPTIONS,
       query,
@@ -83,7 +77,7 @@ export function useMobileSocket(mobileToken?: string, jwtMode = false): UseMobil
       socket.off("MOBILE_USER_NOTIFY");
       socket.disconnect();
     };
-  }, [mobileToken, jwtMode]);
+  }, []);
 
   const clearUserNotify = useCallback(() => setLastUserNotify(null), []);
 

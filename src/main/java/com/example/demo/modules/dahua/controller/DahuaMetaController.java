@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.dahua.service.DahuaDepartmentCacheService;
 import com.example.demo.modules.dahua.service.DahuaDeviceChannelCacheService;
 import com.example.demo.modules.dahua.service.DahuaDeviceChannelRemarkCategoryService;
+import com.example.demo.modules.dahua.service.DahuaDoorCategorySeedService;
 import com.example.demo.modules.dahua.service.DahuaDoorGroupCacheService;
 import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.common.service.JobSchedulerService;
@@ -25,6 +26,7 @@ public class DahuaMetaController {
     private final DahuaDoorGroupCacheService doorGroupCacheService;
     private final DahuaDeviceChannelCacheService deviceChannelCacheService;
     private final DahuaDeviceChannelRemarkCategoryService deviceChannelRemarkCategoryService;
+    private final DahuaDoorCategorySeedService doorCategorySeedService;
     private final AuthContextService authContextService;
     private final JobSchedulerService jobSchedulerService;
 
@@ -32,12 +34,14 @@ public class DahuaMetaController {
                                DahuaDoorGroupCacheService doorGroupCacheService,
                                DahuaDeviceChannelCacheService deviceChannelCacheService,
                                DahuaDeviceChannelRemarkCategoryService deviceChannelRemarkCategoryService,
+                               DahuaDoorCategorySeedService doorCategorySeedService,
                                AuthContextService authContextService,
                                JobSchedulerService jobSchedulerService) {
         this.departmentCacheService = departmentCacheService;
         this.doorGroupCacheService = doorGroupCacheService;
         this.deviceChannelCacheService = deviceChannelCacheService;
         this.deviceChannelRemarkCategoryService = deviceChannelRemarkCategoryService;
+        this.doorCategorySeedService = doorCategorySeedService;
         this.authContextService = authContextService;
         this.jobSchedulerService = jobSchedulerService;
     }
@@ -125,7 +129,8 @@ public class DahuaMetaController {
         try {
             String name = body.get("name") == null ? "" : String.valueOf(body.get("name"));
             Integer sortOrder = parseIntegerOrNull(body.get("sortOrder"));
-            return Result.success(deviceChannelRemarkCategoryService.create(name, sortOrder));
+            Long parentId = parseLongOrNull(body.get("parentId"));
+            return Result.success(deviceChannelRemarkCategoryService.create(name, sortOrder, parentId));
         } catch (IllegalArgumentException ex) {
             return Result.error(ex.getMessage());
         } catch (Exception ex) {
@@ -143,12 +148,25 @@ public class DahuaMetaController {
         try {
             String name = body.get("name") == null ? "" : String.valueOf(body.get("name"));
             Integer sortOrder = parseIntegerOrNull(body.get("sortOrder"));
-            deviceChannelRemarkCategoryService.update(id, name, sortOrder);
+            Long parentId = parseLongOrNull(body.get("parentId"));
+            deviceChannelRemarkCategoryService.update(id, name, sortOrder, parentId);
             return Result.success();
         } catch (IllegalArgumentException ex) {
             return Result.error(ex.getMessage());
         } catch (Exception ex) {
             return Result.error(ex.getMessage() != null ? ex.getMessage() : "保存失败");
+        }
+    }
+
+    @PostMapping("/device-channels/seed-categories")
+    @Operation(summary = "从大华门组/分区预置通道分类文件夹（只填未分类）")
+    public Result<?> seedCategories(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        try {
+            return Result.success(doorCategorySeedService.seed());
+        } catch (Exception ex) {
+            return Result.error(ex.getMessage() != null ? ex.getMessage() : "预置失败");
         }
     }
 
@@ -203,6 +221,22 @@ public class DahuaMetaController {
         }
         try {
             return Integer.parseInt(String.valueOf(v));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Long parseLongOrNull(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try {
+            return Long.parseLong(s);
         } catch (Exception e) {
             return null;
         }

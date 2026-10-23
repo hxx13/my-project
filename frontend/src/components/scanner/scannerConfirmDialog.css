@@ -1,0 +1,10 @@
+/* 扫码流程二次确认弹窗：统一 MinimizableNotice 版式，层级高于扫码弹窗(300)。
+   卡片底/边框/强调色与 ScanEntryNotice 同口径，走 --scan-*（无则回落 app 令牌）。 */
+.minimizable-notice.scan-confirm-dialog {
+  --mn-z-modal: 800;
+  --mn-modal-bg: var(--app-color-surface-container);
+  --mn-modal-border: color-mix(in srgb, var(--scan-accent-ink, var(--app-color-accent)) 15%, transparent);
+  --mn-modal-shadow: 0 0 40px color-mix(in srgb, var(--scan-glow, var(--app-color-accent)) 15%, transparent);
+  --mn-accent: var(--scan-accent-ink, var(--app-color-accent));
+  --mn-accent-soft: color-mix(in srgb, var(--scan-accent-ink, var(--app-color-accent)) 10%, transparent);
+}

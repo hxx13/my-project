@@ -503,27 +503,26 @@ export function UiverseProfilePopup(props: PopupProps) {
                 ) : null}
 
                 {/* 进入确认：居中弹窗 + 倒计时 → 最小化到角落胶囊。
-                    离开确认弹窗打开时完全卸载，避免两个弹窗同时出现。 */}
-                {!state.confirmingExitRoom && (
+                    离开确认弹窗打开时**不再卸载本通知** —— 它留在下层当底板，
+                    否则一级弹窗瞬消、二级弹窗再淡入，中间会闪一下。 */}
                 <ScanEntryNotice
                     state={state}
                     roomName={cornerLeaveLabel}
                     onDismiss={actions.dismissEnterCelebrate}
-                    studentUserId={studentUserId}
                     onRequestExit={() => {
                         if (cornerLeaveRoom) {
                             actions.requestExit(cornerLeaveRoom, cornerLeaveIdx);
                         }
                     }}
                 />
-                )}
             </motion.div>
 
             {/* 离开确认弹窗（z=800，在所有扫描弹窗之上） */}
             <SwipeExitConfirmDialog
                 open={state.confirmingExitRoom !== null}
                 userName={state.user?.name || ""}
-                roomName={state.confirmingExitRoom?.displayName || state.confirmingExitRoom?.name || "当前房间"}
+                userId={state.user?.userId}
+                roomName={state.confirmingExitRoom?.displayName || state.confirmingExitRoom?.name || state.confirmingExitRoom?.officialRoomId || "当前房间"}
                 onConfirm={actions.confirmExit}
                 onCancel={actions.cancelExit}
                 autoSignoutSeconds={state.autoSignoutSecondsRemaining}
@@ -532,7 +531,6 @@ export function UiverseProfilePopup(props: PopupProps) {
                     actions.cancelExit();
                     actions.dismissEnterCelebrate();
                 }}
-                studentUserId={studentUserId}
             />
 
             {/* Keypad overlay */}

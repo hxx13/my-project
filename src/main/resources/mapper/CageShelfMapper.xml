@@ -170,6 +170,23 @@
         ORDER BY c.campus_name ASC, c.area_name ASC, c.floor_name ASC, c.room_name ASC, c.shelve_id ASC
     </select>
 
+    <!-- 每个笼架「有哪些特殊状态」：读 cage_info_value（表单真相源）。
+         存在「表单已标、cage_cell_detail 布尔还是 0」的旧数据，读 detail 会漏点。 -->
+    <select id="selectShelveStatusFlags" resultType="map">
+        SELECT CAST(i.shelve_id AS CHAR) AS shelveId,
+               MAX(CASE WHEN f.canonical = 'needs_division' AND v.value_bool = 1 THEN 1 ELSE 0 END) AS needDivide,
+               MAX(CASE WHEN f.canonical = 'needs_special_feeding' AND v.value_bool = 1 THEN 1 ELSE 0 END) AS specialFeeding,
+               MAX(CASE WHEN f.canonical = 'needs_transfer' AND v.value_bool = 1 THEN 1 ELSE 0 END) AS animalTransfer,
+               MAX(CASE WHEN f.canonical = 'has_health_abnormality' AND v.value_bool = 1 THEN 1 ELSE 0 END) AS healthAbnormal,
+               MAX(CASE WHEN f.canonical = 'needs_cohabitation' AND v.value_bool = 1 THEN 1 ELSE 0 END) AS cohabitation
+        FROM cage_cell_index i
+        JOIN cage_info_value v ON v.animal_cage_id = i.animal_cage_id
+        JOIN cage_info_field f ON f.id = v.field_id
+        WHERE f.canonical IN ('needs_division', 'needs_special_feeding', 'needs_transfer',
+                              'has_health_abnormality', 'needs_cohabitation')
+        GROUP BY i.shelve_id
+    </select>
+
     <!-- 笼位→笼架 课题归属锚点。roomId/floorId/campusId 供「区域级配置」解析用（区域级学生能力），
          本就是已 JOIN 的 c 表上的列，零成本；既有消费方只读 shelveId/PI/部门，加列是纯增量。 -->
     <select id="selectShelvePiAttribution" resultType="map">

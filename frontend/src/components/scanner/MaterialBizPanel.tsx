@@ -201,13 +201,13 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
           {/* 分类 — 左侧纵向 */}
           <div
             className={`flex min-h-0 shrink-0 flex-col gap-0.5 overflow-y-auto overscroll-y-contain border-r ${CARD_BORDER} px-1.5 py-2`}
-            style={{ width: 108 }}
+            style={{ width: 132 }}
           >
             <button
               onClick={() => setActiveCat("all")}
               className={cn(
                 "rounded-lg px-2 py-1.5 text-xs text-left transition-colors",
-                activeCat === "all" ? "bg-cyan-500/20 text-cyan-400" : `${TEXT_MUTED} hover:${TEXT}`,
+                activeCat === "all" ? "bg-[#2563eb] text-white" : `${TEXT_MUTED} hover:${TEXT}`,
               )}
             >
               全部
@@ -218,7 +218,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                 onClick={() => setActiveCat(cat.id)}
                 className={cn(
                   "rounded-lg px-2 py-1.5 text-xs text-left transition-colors",
-                  activeCat === cat.id ? "bg-cyan-500/20 text-cyan-400" : `${TEXT_MUTED} hover:${TEXT}`,
+                  activeCat === cat.id ? "bg-[#2563eb] text-white" : `${TEXT_MUTED} hover:${TEXT}`,
                 )}
               >
                 {cat.name}
@@ -285,7 +285,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                           <span className="flex-1 truncate">
                             {line.name}
                             {line.specLabel && (
-                              <span className="ml-1 text-[10px] text-cyan-400">
+                              <span className="ml-1 text-[10px] text-[#2563eb]">
                                 {line.specLabel}
                               </span>
                             )}
@@ -298,8 +298,8 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
 
                   {/* 预约日期选择面板 */}
                   {showPickupPicker && (
-                    <div className="mb-2 space-y-2 rounded-lg border border-cyan-500/40 bg-cyan-500/8 p-2.5">
-                      <p className="text-[12px] font-medium text-cyan-400">选择预约领取日期</p>
+                    <div className="mb-2 space-y-2 rounded-lg border border-[#2563eb]/40 bg-[#eff6ff] p-2.5">
+                      <p className="text-[12px] font-medium text-[#2563eb]">选择预约领取日期</p>
                       <div className="flex flex-wrap gap-1.5">
                         {pickupPresets.map((p) => (
                           <button
@@ -309,8 +309,8 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                             className={cn(
                               "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
                               scheduledPickupTime === p.iso
-                                ? "border-cyan-500 bg-cyan-500/20 text-cyan-400"
-                                : `${CARD_BORDER} ${TEXT_SEC} hover:border-cyan-500/40`
+                                ? "border-[#2563eb] bg-[#dbeafe] text-[#2563eb]"
+                                : `${CARD_BORDER} ${TEXT_SEC} hover:border-[#2563eb]/40`
                             )}
                           >
                             {p.label}
@@ -361,7 +361,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                           "h-12 flex-[2] rounded-xl text-base font-bold transition-colors disabled:opacity-30",
                           scheduledPickupTime
                             ? `${ACCENT_BG} text-white hover:opacity-90`
-                            : `border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20`
+                            : `border border-[#2563eb]/40 bg-[#eff6ff] text-[#2563eb] hover:bg-[#dbeafe]`
                         )}
                       >
                         {scheduledPickupTime ? (
@@ -463,7 +463,7 @@ function MaterialItemCard({
               <button
                 onClick={() => onCartChange(cartKey, 1)}
                 disabled={cartQty >= maxStock}
-                className="h-8 w-8 rounded bg-cyan-500/30 text-sm text-cyan-400 hover:bg-cyan-500/50 disabled:opacity-20"
+                className="h-8 w-8 rounded bg-[#2563eb]/25 text-sm text-[#2563eb] hover:bg-[#2563eb]/45 disabled:opacity-20"
               >
                 <Plus className="h-4 w-4 mx-auto" />
               </button>

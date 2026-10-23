@@ -112,6 +112,14 @@ export async function fetchVideoChannels(): Promise<VideoChannel[]> {
   return res.data.data ?? [];
 }
 
+/** 重建监控分类树：按通道名重新分「楼层 → 相机组」 */
+export async function rebuildVideoCategories(): Promise<{ nodes?: number; channels?: number }> {
+  const res = await authHttp.post<{ data: { nodes?: number; channels?: number } }>(
+    "/v1/dahua/tvwall/categories/rebuild",
+  );
+  return res.data.data ?? {};
+}
+
 export async function fetchTvWallTasks(tvWallId: string): Promise<TvWallTaskItem[]> {
   const res = await authHttp.get<{ data: TvWallTaskItem[] }>("/v1/dahua/tvwall/tasks", {
     params: { tvWallId },

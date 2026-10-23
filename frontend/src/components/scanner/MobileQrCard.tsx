@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { RefreshCw, Loader2, Smartphone, Clock } from "lucide-react";
+import { RefreshCw, Loader2, Smartphone } from "lucide-react";
 import {
   fetchMobileTokenInfo,
   generateMobileToken,
@@ -13,6 +13,8 @@ interface MobileQrCardProps {
   userId: string;
   /** 随父容器尺寸缩放（扫码弹窗左下卡片） */
   adaptive?: boolean;
+  /** 是否提供「重新生成」；扫码弹窗只展示，本人「我的」页可轮换 */
+  showRegenerate?: boolean;
 }
 
 const QR_SIZE_DEFAULT = 152;
@@ -100,14 +102,7 @@ function useScanThemedQrColors(enabled: boolean) {
   return { wrapRef, colors };
 }
 
-/** 根据有效期计算剩余天数 */
-function daysRemaining(expiresAt: string): number {
-  const now = Date.now();
-  const exp = new Date(expiresAt).getTime();
-  return Math.max(0, Math.ceil((exp - now) / (1000 * 60 * 60 * 24)));
-}
-
-export function MobileQrCard({ userId, adaptive = false }: MobileQrCardProps) {
+export function MobileQrCard({ userId, adaptive = false, showRegenerate = true }: MobileQrCardProps) {
   const [tokenInfo, setTokenInfo] = useState<MobileTokenInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -129,7 +124,7 @@ export function MobileQrCard({ userId, adaptive = false }: MobileQrCardProps) {
       } else {
         // 自动生成
         setGenerating(true);
-        const gen = await generateMobileToken(userId, 3);
+        const gen = await generateMobileToken(userId);
         setTokenInfo({ hasToken: true, token: gen.token, expiresAt: gen.expiresAt });
         setGenerating(false);
       }
@@ -149,7 +144,7 @@ export function MobileQrCard({ userId, adaptive = false }: MobileQrCardProps) {
     setGenerating(true);
     setError(null);
     try {
-      const gen = await generateMobileToken(userId, 3);
+      const gen = await generateMobileToken(userId);
       setTokenInfo({ hasToken: true, token: gen.token, expiresAt: gen.expiresAt });
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成失败");
@@ -158,12 +153,10 @@ export function MobileQrCard({ userId, adaptive = false }: MobileQrCardProps) {
     }
   };
 
-  // QR 码中的 URL（hash 路由）
+  // QR 码中的 URL（hash 路由）：指向登录页，扫码后自动换票
   const qrUrl = tokenInfo?.token
-    ? `${window.location.origin}/#/m/sc/${tokenInfo.token}`
+    ? `${window.location.origin}/#/m/login?code=${tokenInfo.token}`
     : "";
-
-  const remaining = tokenInfo?.expiresAt ? daysRemaining(tokenInfo.expiresAt) : 0;
 
   return (
     <div
@@ -175,14 +168,8 @@ export function MobileQrCard({ userId, adaptive = false }: MobileQrCardProps) {
       <div className="flex shrink-0 items-center gap-2 w-full justify-center flex-wrap">
         <Smartphone className="size-4 text-[var(--app-color-text-tertiary)]" strokeWidth={1.5} />
         <span className={`font-semibold text-[var(--app-color-text-secondary)] ${adaptive ? "text-xs sm:text-sm" : "text-sm"}`}>
-          手机端直达
+          免登录二维码
         </span>
-        {remaining > 0 && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--app-color-text-tertiary)]">
-            <Clock className="size-3" strokeWidth={1.5} />
-            {remaining}天后过期
-          </span>
-        )}
       </div>
 
       {/* 二维码区：adaptive 时占满剩余高度并据此缩放 */}
@@ -224,15 +211,11 @@ export function MobileQrCard({ userId, adaptive = false }: MobileQrCardProps) {
 
       {tokenInfo?.token && !loading && !generating && !error ? (
         <div className="shrink-0 flex flex-col items-center gap-1.5 w-full">
-          {tokenInfo.expiresAt && (
-            <p className="text-[10px] text-[var(--app-color-text-tertiary)] text-center leading-tight">
-              有效期至{" "}
-              <span className="font-medium text-[var(--app-color-text-secondary)]">
-                {tokenInfo.expiresAt.slice(0, 10)}
-              </span>
-            </p>
-          )}
+          <p className="text-[10px] text-[var(--app-color-text-tertiary)] text-center leading-tight">
+            长期有效 · 扫码免登录
+          </p>
 
+          {showRegenerate && (
           <button
             type="button"
             onClick={handleRegenerate}
@@ -245,6 +228,7 @@ export function MobileQrCard({ userId, adaptive = false }: MobileQrCardProps) {
             <RefreshCw className={generating ? "size-3 animate-spin" : "size-3"} strokeWidth={1.5} />
             重新生成
           </button>
+          )}
         </div>
       ) : null}
     </div>

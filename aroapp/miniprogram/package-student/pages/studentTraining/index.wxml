@@ -75,7 +75,12 @@
   <!-- 我的报名 -->
   <block wx:else>
     <view wx:if="{{ myLoading }}" class="muted">加载中…</view>
-    <van-empty wx:elif="{{ myRows.length === 0 }}" description="暂无报名记录" />
+    <view wx:elif="{{ myRows.length === 0 }}" class="train-empty">
+      <van-icon name="notes-o" size="72rpx" color="#c8c9cc" />
+      <text class="train-empty-title">还没有报名任何培训</text>
+      <text class="train-empty-sub">去培训列表挑一场报名吧</text>
+      <view class="train-empty-btn" bindtap="goEnrollList">去报名</view>
+    </view>
     <view wx:else class="list">
       <view wx:for="{{ myRows }}" wx:key="id" class="row-card {{ item.statusText === '已通过' ? 'row-card-ok' : '' }}">
         <view class="row-head">

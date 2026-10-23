@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { Smartphone } from "lucide-react";
 import { MinimizableNotice } from "@/components/ui/MinimizableNotice";
 import {
   hasActiveAutoSignoutCountdown,
@@ -28,8 +27,6 @@ interface ScanEntryNoticeProps {
   state: PopupState;
   roomName: string;
   onDismiss: () => void;
-  /** 当前扫码人 userId，用于生成手机端直达二维码 */
-  studentUserId?: string;
   /** 用户点击"我要离开"时的回调（仅场内+倒计时时显示此按钮） */
   onRequestExit?: () => void;
 }
@@ -42,7 +39,6 @@ export function ScanEntryNotice({
   state,
   roomName,
   onDismiss,
-  studentUserId: studentUserIdProp,
   onRequestExit,
 }: ScanEntryNoticeProps) {
   const sessionIdRef = useRef<string | null>(null);
@@ -105,13 +101,14 @@ export function ScanEntryNotice({
     state.autoSignoutScheduledAt,
   ]);
 
+  /* ── 离开确认弹窗打开时**不关闭**本通知：它留在下层做稳定底板，
+        二级弹窗直接盖上来，避免「一级瞬间消失 → 二级再淡入」的闪屏。 ── */
   const open =
     state.enterNoticeReady &&
     snapshot != null &&
     hasCountdownData(snapshot) &&
     !dismissed &&
-    !state.exitCelebrateRoomId &&
-    !state.confirmingExitRoom;
+    !state.exitCelebrateRoomId;
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -134,26 +131,26 @@ export function ScanEntryNotice({
 
   if (!open || !snapshot) return null;
 
-  const hasCountdown = hasCountdownData(snapshot);
   const copy = resolveAutoSignoutCountdownCopy(snapshot.autoSignoutState);
+  const hasCountdown = hasCountdownData(snapshot);
+  const description = hasCountdown
+    ? snapshot.autoSignoutState === "PENDING_ACTIVATION"
+      ? "请在倒计时内刷卡激活，超时自动签退"
+      : "倒计时结束后自动签退"
+    : copy.hint;
   const isAlreadyInside = state.enterMotionAtCorner;
   const title = isAlreadyInside
     ? `当前已在 ${snapshot.roomName} 内`
     : `已进入 ${snapshot.roomName}`;
-  const studentUserId = studentUserIdProp || state.user?.userId || "";
-
-  // QR 底部横条（仅当 studentUserId 存在时渲染）
-  const extraContent = studentUserId ? (
-    <div className="scan-entry-qr-strip">
-      <div className="scan-entry-qr-strip__info">
-        <Smartphone className="size-[18px] shrink-0 text-[var(--app-color-text-tertiary)]" strokeWidth={1.5} />
-        <span>扫描二维码可实时查看当前状态</span>
-      </div>
-      <div className="scan-entry-qr-strip__qr">
-        <MobileQrCard userId={studentUserId} adaptive />
-      </div>
+  // 本人免登录二维码：可拍照保存，等同登录凭证
+  const extraContent = state.user?.userId ? (
+    <div className="flex w-full flex-col items-center gap-1">
+      <MobileQrCard userId={state.user.userId} showRegenerate={false} />
+      <p className="text-[10px] text-center leading-tight" style={{ color: "var(--app-color-text-tertiary)" }}>
+        可拍照保存 · 等同登录凭证 · 请勿转发
+      </p>
     </div>
-  ) : undefined;
+  ) : null;
 
   // "我要离开"按钮：仅场内已有+有倒计时+有回调时显示；正在执行离开(actedRoomId)期间隐藏，避免"确认离开"后又弹一次"我要离开"
   const showExitButton = isAlreadyInside && hasCountdown && onRequestExit && !state.actedRoomId;
@@ -165,7 +162,7 @@ export function ScanEntryNotice({
       onDismiss={handleDismiss}
       onPhaseChange={handlePhaseChange}
       title={title}
-      description={copy.hint}
+      description={description}
       countdownDeadlineAt={snapshot.autoSignoutScheduledAt}
       countdownSeconds={
         hasCountdown && !snapshot.autoSignoutScheduledAt

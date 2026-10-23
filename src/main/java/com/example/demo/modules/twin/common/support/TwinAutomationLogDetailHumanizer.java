@@ -26,6 +26,8 @@ import java.util.regex.Pattern;
 public final class TwinAutomationLogDetailHumanizer {
 
     private static final Pattern CHANNEL = Pattern.compile("channel=([^,\\s|）)]+)");
+    /** 门禁临时解锁 / 刷门规则 detail 中的「通道[channelCode]」技术码 */
+    private static final Pattern CHANNEL_BRACKET = Pattern.compile("通道\\[([^\\]]+)\\]");
     private static final Pattern ROOM_ID = Pattern.compile("roomId=([0-9]{6,32})");
     private static final Pattern OPERATOR = Pattern.compile("操作人=([^，]+)");
     /** 门禁临时解锁等 detail 中的「人员[personCode]」技术码 */
@@ -114,6 +116,11 @@ public final class TwinAutomationLogDetailHumanizer {
         Matcher m = CHANNEL.matcher(detail);
         while (m.find()) {
             String c = m.group(1).trim();
+            if (!c.isEmpty() && !out.contains(c)) out.add(c);
+        }
+        Matcher mb = CHANNEL_BRACKET.matcher(detail);
+        while (mb.find()) {
+            String c = mb.group(1).trim();
             if (!c.isEmpty() && !out.contains(c)) out.add(c);
         }
         return out;
@@ -391,6 +398,14 @@ public final class TwinAutomationLogDetailHumanizer {
             if (chCode.isEmpty()) return label;
             return label + "[" + chCode + "]";
         }
+        // "通道[CH001]" → 通道名
+        Matcher cb = CHANNEL_BRACKET.matcher(d);
+        if (cb.find()) {
+            String code = cb.group(1).trim();
+            String name = chMap.getOrDefault(code, "");
+            if (!name.isEmpty() && !name.equals(code)) return name;
+            return code;
+        }
         // "channel=CH001" → 通道名[CH001]
         Matcher cm = CHANNEL.matcher(d);
         if (cm.find()) {
@@ -518,6 +533,9 @@ public final class TwinAutomationLogDetailHumanizer {
             String label = chMap.get(code);
             if (label == null || label.isBlank() || label.equals(code)) continue;
             out = out.replace("channel=" + code, "通道：" + label + "[" + code + "]");
+            // 引擎写入格式是 通道[编码] + 紧跟原始通道名，两者一起换掉，避免名字重复
+            out = out.replace("通道[" + code + "]" + label, "通道：" + label);
+            out = out.replace("通道[" + code + "]", "通道：" + label);
         }
 
         List<String> rKeys = new ArrayList<>(rmMap.keySet());

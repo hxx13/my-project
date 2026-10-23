@@ -1,6 +1,6 @@
 {
-  "navigationStyle": "custom",
   "backgroundColor": "#f7f8fa",
+  "navigationStyle": "custom",
   "usingComponents": {
     "cage-grid": "/package-student/components/cage-grid/index",
     "van-icon": "@vant/weapp/icon/index",

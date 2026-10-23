@@ -1,10 +1,7 @@
 /** 手机 H5 公告详情 —「下次不再弹出」（与扫码弹窗同源，本页等待后同步后端） */
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import {
-  suppressMobileNoticeAutoOpen,
-  type MobileAlertItem,
-} from "@/api/domains/mobileStudent.api";
+import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { suppressStudentMobileNoticeAutoOpen } from "@/api/domains/studentMobile.api";
 import { NOTICE_DISMISS_WAIT_SECONDS } from "@/components/scanner/scanNoticeDismissStorage";
 
@@ -23,15 +20,10 @@ export function resolveMobileNoticeRecordId(item: MobileAlertItem): number | nul
 }
 
 export function useMobileNoticeAutoSuppress({
-  token,
-  jwtMode = false,
   item,
   alreadySuppressed = false,
   onSuppressed,
 }: {
-  token?: string;
-  /** JWT 登录态：走 /student/mobile/notice-auto-suppress（与扫码弹窗同源服务） */
-  jwtMode?: boolean;
   item: MobileAlertItem;
   alreadySuppressed?: boolean;
   onSuppressed?: () => void;
@@ -73,17 +65,14 @@ export function useMobileNoticeAutoSuppress({
 
   useEffect(() => {
     if (countdown !== 0) return;
-    if ((!jwtMode && !token?.trim()) || !noticeKind || recordId == null) {
+    if (!noticeKind || recordId == null) {
       setCountdown(null);
       return;
     }
     let cancelled = false;
     const session = sessionRef.current;
     setSaving(true);
-    const suppressPromise = jwtMode
-      ? suppressStudentMobileNoticeAutoOpen({ noticeKind, recordId })
-      : suppressMobileNoticeAutoOpen(token!.trim(), { noticeKind, recordId });
-    void suppressPromise
+    void suppressStudentMobileNoticeAutoOpen({ noticeKind, recordId })
       .then(() => {
         if (cancelled || session !== sessionRef.current) return;
         setSuppressed(true);
@@ -102,10 +91,10 @@ export function useMobileNoticeAutoSuppress({
     return () => {
       cancelled = true;
     };
-  }, [countdown, token, jwtMode, noticeKind, recordId, onSuppressed]);
+  }, [countdown, noticeKind, recordId, onSuppressed]);
 
   const canSuppress = Boolean(
-    (jwtMode || token?.trim()) && noticeKind && recordId != null && !suppressed,
+    noticeKind && recordId != null && !suppressed,
   );
 
   const startSuppress = useCallback(() => {

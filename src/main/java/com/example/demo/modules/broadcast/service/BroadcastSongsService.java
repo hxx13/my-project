@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -129,14 +130,36 @@ public class BroadcastSongsService {
         if (songPath == null || songPath.isBlank()) {
             return "";
         }
+        return pathToListId().getOrDefault(songPath, "");
+    }
+
+    /**
+     * 平台当前曲库快照：曲目路径 → 所属列表编号。
+     *
+     * <p>**播放时必须现查**，不能用方案保存时的列表快照 —— 曲库被改过（曲目移走、列表重建）后，
+     * 快照会让平台回「目标不存在」。方案里的曲目横跨多个列表时，快照更是只记得住其中一个。
+     */
+    public Map<String, String> pathToListId() {
+        Map<String, String> out = new java.util.HashMap<>();
         for (SongListView list : listSongLists()) {
             for (SongListView.SongView s : list.songs()) {
-                if (songPath.equals(s.pathName())) {
-                    return list.id();
-                }
+                out.putIfAbsent(s.pathName(), list.id());
             }
         }
-        return "";
+        return out;
+    }
+
+    /** 按顺序取第一首仍在平台曲库里的曲目；都不在了返回 null。 */
+    public static String pickExisting(List<String> paths, Map<String, String> liveByPath) {
+        if (paths == null) {
+            return null;
+        }
+        for (String p : paths) {
+            if (liveByPath.containsKey(p)) {
+                return p;
+            }
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------- 列表（文件夹）管理

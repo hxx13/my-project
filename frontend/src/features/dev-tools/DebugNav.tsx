@@ -1044,6 +1044,7 @@ export default function DebugNav() {
             <SwipeExitConfirmDialog
                 open={autoExitConfirm !== null}
                 userName={activeResult?.userInfo?.name ?? ""}
+                userId={activeResult?.userInfo?.userId}
                 roomName={
                     (() => {
                         if (!autoExitConfirm || !activeResult?.pendingRooms) return "";

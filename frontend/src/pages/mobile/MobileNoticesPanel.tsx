@@ -25,9 +25,6 @@ interface MobileNoticesPanelProps {
   html5PrivilegeBypass?: boolean;
   /** 首页点击某条时直接进详情；未传则先进列表 */
   initialFocusKey?: string | null;
-  token?: string;
-  /** JWT 登录态（无 token 链接） */
-  jwtMode?: boolean;
   /** 某条公告/违规 suppress 成功后就地合并，禁止整表 load — post-save-no-full-refresh.mdc */
   onNoticeSuppressed?: (itemKey: string) => void;
 }
@@ -38,8 +35,6 @@ export default function MobileNoticesPanel({
   alerts,
   html5PrivilegeBypass = false,
   initialFocusKey = null,
-  token,
-  jwtMode = false,
   onNoticeSuppressed,
 }: MobileNoticesPanelProps) {
   const [viewKey, setViewKey] = useState<string | null>(null);
@@ -155,8 +150,6 @@ export default function MobileNoticesPanel({
         {isDetailView && focusedItem ? (
           <div className="flex min-w-0 max-w-[min(46vw,9.5rem)] justify-end overflow-hidden">
             <MobileNoticeSuppressActions
-              token={token}
-              jwtMode={jwtMode}
               item={focusedItem}
               compact
               onSuppressed={() => onNoticeSuppressed?.(itemKey(focusedItem))}

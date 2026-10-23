@@ -30,6 +30,7 @@ import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED } from 
 import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { webImageSrc } from "@/utils/mediaUrl";
+import { retryImageOnError } from "@/utils/imageRetry";
 import { Portal } from "@/components/Portal";
 import MySuppliesRecordsPanel from "@/components/supplies/MySuppliesRecordsPanel";
 import SuppliesItemEditDialog from "@/components/supplies/SuppliesItemEditDialog";
@@ -983,32 +984,32 @@ export default function AdminSuppliesMallPage() {
       <div className="flex min-h-0 flex-1 flex-row">
         {/* Sidebar — shown when viewing items (all-items or specific category) */}
         {activeCat !== "all" && (
-          <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] py-2">
+          <aside className="w-[132px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[#e9eef6] p-2">
             <button
               type="button"
               onClick={() => setActiveCat("all")}
-              className="flex items-center gap-1 w-full px-3 py-2 text-xs font-medium text-[var(--twin-link)] hover:bg-[var(--twin-canvas)] transition-colors border-b border-[var(--twin-hairline)] mb-1"
+              className="mb-2 flex w-full items-center justify-center gap-1 rounded-lg bg-white/60 px-2 py-2.5 text-[12px] font-semibold text-[#2563eb] transition-colors hover:bg-white"
             >
-              <span className="text-sm leading-none">&larr;</span>
+              <span className="leading-none">&larr;</span>
               <span>返回分类</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveCat("all-items" as any)}
-              className={`block w-full px-3 py-2 text-left text-xs leading-snug ${
-                activeCat === "all-items" ? "border-l-2 border-sky-500 bg-[var(--twin-canvas)] font-semibold text-sky-700" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+              className={`mb-1.5 block w-full rounded-lg px-2 py-2.5 text-center text-[12px] leading-snug transition-colors ${
+                activeCat === "all-items" ? "bg-[#2563eb] font-semibold text-white shadow-[0_3px_8px_rgba(37,99,235,0.28)]" : "text-[var(--twin-body)] hover:bg-white/60"
               }`}
             >
               全部
             </button>
-            <div className="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--twin-mute)]">分类</div>
+            <div className="px-2 py-1 text-[10px] font-semibold tracking-wide text-[var(--twin-mute)]">分类</div>
             {categories.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setActiveCat(c.id)}
-                className={`block w-full px-3 py-2 text-left text-xs leading-snug ${
-                  activeCat === c.id ? "border-l-2 border-[var(--twin-link)] bg-[var(--twin-canvas)] font-semibold text-[var(--twin-link)]" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+                className={`mb-1.5 block w-full rounded-lg px-2 py-2.5 text-center text-[12px] leading-snug transition-colors ${
+                  activeCat === c.id ? "bg-[#2563eb] font-semibold text-white shadow-[0_3px_8px_rgba(37,99,235,0.28)]" : "text-[var(--twin-body)] hover:bg-white/60"
                 }`}
               >
                 {c.name}
@@ -1062,7 +1063,7 @@ export default function AdminSuppliesMallPage() {
                   >
                     <div className="relative shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)] flex items-center justify-center aspect-square w-24">
                       {catCover ? (
-                        <img src={catCover} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+                        <img src={catCover} alt="" loading="lazy" decoding="async" onError={retryImageOnError()} className="absolute inset-0 h-full w-full object-cover" />
                       ) : (
                         <span className="text-3xl font-bold text-[var(--twin-mute)] select-none">{String(c.name || "?").charAt(0)}</span>
                       )}
@@ -1135,7 +1136,7 @@ export default function AdminSuppliesMallPage() {
                         className="absolute inset-0 block"
                         onClick={() => setPreviewSrc(cover)}
                       >
-                        <img src={cover} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                        <img src={cover} alt="" loading="lazy" decoding="async" onError={retryImageOnError()} className="h-full w-full object-cover" />
                       </button>
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-base font-semibold text-[var(--twin-mute)]">
@@ -1367,6 +1368,7 @@ export default function AdminSuppliesMallPage() {
           <img
             src={previewSrc}
             alt="预览"
+            onError={retryImageOnError()}
             className="max-h-[90vh] max-w-[90vw] rounded-[var(--app-radius-container)] object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
@@ -1400,7 +1402,7 @@ export default function AdminSuppliesMallPage() {
                 return (
                   <div key={line.key} className="flex items-center gap-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
                     {line.cover ? (
-                      <img src={line.cover} alt="" className="h-10 w-10 shrink-0 rounded object-cover border border-[var(--twin-hairline)]" />
+                      <img src={line.cover} alt="" onError={retryImageOnError()} className="h-10 w-10 shrink-0 rounded object-cover border border-[var(--twin-hairline)]" />
                     ) : (
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-[var(--twin-canvas)] border border-[var(--twin-hairline)] text-xs text-[var(--twin-mute)]">
                         {line.initial}

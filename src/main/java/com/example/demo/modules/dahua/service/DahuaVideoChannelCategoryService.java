@@ -10,6 +10,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -23,8 +24,8 @@ import java.util.regex.Pattern;
 /**
  * 监控通道分类树。独立于门禁的备注分类（两套数据、两套接口）。
  *
- * 骨架按点位表的分区口径自动生成：**楼层 → 相机组**（实验动物中心1F / RD1、GY3F…），
- * 只在**树为空**时播一次种；之后全靠手工维护（新增文件夹 / 重命名 / 删除 / 挪通道）。
+ * 骨架照平台视频组织树生成（等价 ICC 客户端实时预览左侧树）：实验动物中心 → 楼层 → 区，
+ * 只播一次种；之后靠手工维护（新增文件夹 / 重命名 / 删除 / 挪通道），手动分类不会被自动覆盖。
  * 另把点位表里的设备 IP 补写进通道的跳转地址（只填空着的）。
  */
 @Service
@@ -40,24 +41,54 @@ public class DahuaVideoChannelCategoryService {
             List.of(VIDEO_DEVICE_CATEGORY, DECODER_DEVICE_CATEGORY);
     private static final long ROOT = 0L;
     private static final String LINKS_CSV = "db/video-channel-links.csv";
+    private static final String LINK_FIXES_CSV = "db/video-channel-link-fixes.csv";
 
-    /** 名字里的楼层，如 `RD1-JK01 1F缓冲间` 的 `1F`、`GYB1F-JK01` 的 `B1F` */
+    /** 分类根节点，与 ICC 客户端实时预览一致；也是「骨架是不是这一版」的判据 */
+    private static final String ROOT_NODE = "实验动物中心";
+    /** 平台视频域组织根节点（客户端实时预览用的那棵树） */
+    private static final String VIDEO_ORG_ROOT = "L02";
+    /** 完全没有位置信息的通道收在这里 */
+    private static final String NO_FLOOR_NODE = "未标注";
+    /** 名称里的楼层，如 `RD1-JK01 1F缓冲间` 的 `1F`、`GYB1F-JK01` 的 `B1F` */
     private static final Pattern FLOOR = Pattern.compile("(B1F|\\d+F)");
-    private static final Pattern NAME_PREFIX = Pattern.compile("^([A-Za-z0-9]+)[-\\s]");
-    /** 楼层节点名前缀；也是「骨架是不是这一版」的判据 */
-    private static final String FLOOR_NODE_PREFIX = "实验动物中心";
-    /** 名字里没有楼层的通道（SY-NVR-* 那批）收在这里 */
-    private static final String NO_FLOOR_NODE = "未标注楼层";
-    /** 解码器/电视墙槽位统一收在这里 */
-    private static final String DECODER_NODE = "电视墙解码器";
+    /** 房号里的地下室段：`E10-B106`、`（E10B-B112）` */
+    private static final Pattern ROOM_BASEMENT = Pattern.compile("(?:^|[-（(\\s])B(\\d)");
+    /** 房号：`(465)`、`（E10-B106）` */
+    private static final Pattern ROOM = Pattern.compile("[（(]([^）)]{2,})[）)]");
+    /** B1F 分区编号：`E10-`、`E11A-`、`E12-` */
+    private static final Pattern ROOM_ZONE = Pattern.compile("E(\\d+[A-C]?)\\s*-");
 
     private final DahuaVideoChannelCategoryMapper categoryMapper;
     private final DahuaDeviceChannelCacheMapper channelMapper;
+    private final DahuaOpenApiService openApiService;
+
+    /** 种子只在每个进程里播一次：每次请求都跑几百条 UPDATE 会拖慢分类树接口 */
+    private volatile boolean linkSeedDone = false;
 
     public DahuaVideoChannelCategoryService(DahuaVideoChannelCategoryMapper categoryMapper,
-                                            DahuaDeviceChannelCacheMapper channelMapper) {
+                                            DahuaDeviceChannelCacheMapper channelMapper,
+                                            DahuaOpenApiService openApiService) {
         this.categoryMapper = categoryMapper;
         this.channelMapper = channelMapper;
+        this.openApiService = openApiService;
+    }
+
+    /** 只取视频输入通道：解码器输出口、报警、音频、门禁通道都不参与分类 */
+    private List<DahuaDeviceChannelCache> videoChannels() {
+        return channelMapper.listByDeviceCategory(WALL_CATEGORIES).stream()
+                .filter(c -> c.getUnitType() != null && c.getUnitType() == 1)
+                .toList();
+    }
+
+    /** 重建分类树：清掉现有分类与归属，照平台视频组织树重新播一次（会覆盖手工分类） */
+    public Map<String, Object> rebuild() {
+        channelMapper.clearVideoCategory(WALL_CATEGORIES);
+        categoryMapper.deleteAll();
+        seedByLocation();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("nodes", categoryMapper.listAll().size());
+        out.put("channels", videoChannels().size());
+        return out;
     }
 
     /** 全部节点（扁平，前端自己拼树）+ 每个节点直挂的通道数。树为空时先播种。 */
@@ -168,88 +199,126 @@ public class DahuaVideoChannelCategoryService {
     }
 
     /**
-     * 保证骨架是「楼层 → 相机组」这一版。
-     *
-     * 判据不是「表空」而是「没有楼层节点」：早期按名称前缀草播过一版（只有 RD1/RD2/GY3F… 这层），
-     * 若那次骨架还在，表不空、旧判据就不会重建。所以这里认准楼层节点，缺失就清掉重建一次。
-     * 只在升级到这一版时命中一次；之后楼层节点一直在，不会再动用户手工整理过的树。
+     * 骨架照 ICC 客户端实时预览的树（实验动物中心 → B1F/1F/2F/3F/4F，B1F 再分区）。
+     * 判据是根节点「实验动物中心」+ 直接子节点「B1F」；两者都在说明已经按平台树播过种，
+     * 之后无论手工怎么改都不再自动重建（只有手动点「重建分类」才会覆盖）。
      */
     private void ensureTreeSeeded() {
         List<DahuaVideoChannelCategory> all = categoryMapper.listAll();
-        boolean hasFloorNode = all.stream().anyMatch(n -> n.getName() != null
-                && (n.getName().startsWith(FLOOR_NODE_PREFIX) || NO_FLOOR_NODE.equals(n.getName())));
-        boolean hasDecoderNode = all.stream()
-                .anyMatch(n -> DECODER_NODE.equals(n.getName()));
-        // 解码器槽位是后补进同步的：缓存里已经有这类通道但树上还没有对应的节点，就补建一次
-        boolean decoderPending = !hasDecoderNode
-                && !channelMapper.listByDeviceCategory(List.of(DECODER_DEVICE_CATEGORY)).isEmpty();
-        if (!all.isEmpty() && hasFloorNode && !decoderPending) {
+        Long rootId = all.stream()
+                .filter(n -> ROOT_NODE.equals(n.getName()) && (n.getParentId() == null || n.getParentId() == ROOT))
+                .map(DahuaVideoChannelCategory::getId)
+                .findFirst().orElse(null);
+        boolean seededFromPlatform = rootId != null && all.stream()
+                .anyMatch(n -> "B1F".equals(n.getName()) && rootId.equals(n.getParentId()));
+        if (seededFromPlatform) {
             return;
-        }
-        if (!all.isEmpty() && !hasFloorNode) {
-            log.info("[video-channel] 旧版前缀骨架（{} 个节点）将被按分区重建", all.size());
         }
         channelMapper.clearVideoCategory(WALL_CATEGORIES);
         categoryMapper.deleteAll();
-        seedFromChannelNames();
+        seedByLocation();
     }
 
     /**
-     * 播种：两层 —— 楼层（实验动物中心1F…）→ 相机组（RD1/RD2/GY3F…）。
-     * 楼层与前缀都直接从通道名里取（名字形如 `RD1-JK01 1F缓冲间(123)` / `GY4F-JK01 4F样品接收室`），
-     * 与点位表里的分区口径一致；名字里没有楼层的（SY-NVR-* 这类录像机通道）归到「未标注楼层」。
-     * 解码器/电视墙槽位（大类 45：槽位02-01、HDMIOUT…）整批收在「电视墙解码器」下，不按名字前缀乱分。
+     * 播种：直接照抄平台的视频组织树（`tree/client/device-org`，根节点 L02），
+     * 节点与通道归属都以平台为准，不解析通道名称。
+     * 平台接口不可用时退回按名称推断（楼层 → 区）。
      */
-    private void seedFromChannelNames() {
-        List<DahuaDeviceChannelCache> channels = channelMapper.listByDeviceCategory(WALL_CATEGORIES);
-        Map<String, Long> floorNodes = new LinkedHashMap<>();
-        Map<String, Long> groupNodes = new LinkedHashMap<>();
-        for (DahuaDeviceChannelCache c : channels) {
-            boolean decoder = c.getDeviceCategory() != null && c.getDeviceCategory() == DECODER_DEVICE_CATEGORY;
-            String name = c.getChannelName() == null ? "" : c.getChannelName();
-            String floorName;
-            String group;
-            if (decoder) {
-                floorName = DECODER_NODE;
-                group = null;                     // 槽位/HDMIOUT 直接挂在「电视墙解码器」下，不再分组
-            } else {
-                Matcher fm = FLOOR.matcher(name);
-                floorName = fm.find() ? FLOOR_NODE_PREFIX + fm.group(1) : NO_FLOOR_NODE;
-                Matcher pm = NAME_PREFIX.matcher(name);
-                group = pm.find() ? pm.group(1) : "其它";
+    private void seedByLocation() {
+        List<Map<String, Object>> orgs = openApiService.fetchVideoOrgTree(VIDEO_ORG_ROOT);
+        if (orgs.isEmpty()) {
+            seedFromNames();
+            return;
+        }
+        Map<String, Long> nodeByCode = new LinkedHashMap<>();
+        // 先按层级深度建节点，父节点一定先于子节点出现
+        List<Map<String, Object>> sorted = new ArrayList<>(orgs);
+        sorted.sort((a, b) -> String.valueOf(a.get("code")).length() - String.valueOf(b.get("code")).length());
+        for (Map<String, Object> org : sorted) {
+            String code = String.valueOf(org.get("code"));
+            Object parentCode = org.get("parentCode");
+            long parentId = parentCode == null ? ROOT : nodeByCode.getOrDefault(String.valueOf(parentCode), ROOT);
+            String name = String.valueOf(org.get("name"));
+            int sort = org.get("sort") instanceof Number n ? n.intValue() : 0;
+            nodeByCode.put(code, insertNode(parentId, name, sort));
+        }
+        for (Map<String, Object> org : orgs) {
+            Long nodeId = nodeByCode.get(String.valueOf(org.get("code")));
+            if (nodeId == null) {
+                continue;
             }
-            long floorId = floorNodes.computeIfAbsent(floorName, f -> insertNode(ROOT, f, 0));
-            long gid = group == null ? floorId
-                    : groupNodes.computeIfAbsent(floorName + "|" + group,
-                            k -> insertNode(floorId, group, groupRank(group)));
-            channelMapper.updateVideoCategory(c.getId(), gid);
-        }
-        int i = 0;
-        for (Map.Entry<String, Long> e : floorNodes.entrySet()) {
-            categoryMapper.updateSort(e.getValue(), floorRank(e.getKey()) * 100 + i++);
-        }
-        if (floorNodes.isEmpty()) {
-            insertNode(ROOT, "全部监控", 0);
+            for (Map<String, Object> ch : DahuaOpenApiService.asListOfMap(org.get("channel"))) {
+                Object channelCode = ch.get("channelCode");
+                if (channelCode == null) {
+                    continue;
+                }
+                channelMapper.updateVideoCategoryByChannelCode(String.valueOf(channelCode), nodeId);
+            }
         }
     }
 
-    /** 楼层顺序：1F→2F→3F→4F→B1F→解码器，不认得的排最后。播种按通道名顺序遇到，不排会变成 3F/4F/B1F/1F。 */
-    private static int floorRank(String floorName) {
-        if (DECODER_NODE.equals(floorName)) {
-            return 8;
+    /** 兜底：平台树取不到时，按通道名推断「楼层 → 区」 */
+    private void seedFromNames() {
+        List<DahuaDeviceChannelCache> channels = videoChannels();
+        long root = insertNode(ROOT, ROOT_NODE, 0);
+        Map<String, Long> floorNodes = new LinkedHashMap<>();
+        Map<String, Long> zoneNodes = new LinkedHashMap<>();
+        for (DahuaDeviceChannelCache c : channels) {
+            String name = c.getChannelName() == null ? "" : c.getChannelName();
+            String floor = inferFloor(name);
+            if (floor == null) {
+                long unlabeled = floorNodes.computeIfAbsent(NO_FLOOR_NODE, n -> insertNode(root, n, 900));
+                channelMapper.updateVideoCategory(c.getId(), unlabeled);
+                continue;
+            }
+            long floorId = floorNodes.computeIfAbsent(floor, f -> insertNode(root, f, floorRank(f)));
+            long target = floorId;
+            String zone = "B1F".equals(floor) ? zoneOf(name) : null;
+            if (zone != null) {
+                target = zoneNodes.computeIfAbsent(zone, z -> insertNode(floorId, z, zoneRank(z)));
+            }
+            channelMapper.updateVideoCategory(c.getId(), target);
         }
-        Matcher m = Pattern.compile("(B1F|(\\d+)F)").matcher(floorName);
-        if (!m.find()) {
-            return 9;
-        }
-        return m.group(2) != null ? Integer.parseInt(m.group(2)) : 5;
     }
 
-    /** 相机组的显示顺序：先 RD1/RD2，再 GY3F/GY4F/GYB1F，最后 SY 与其它。 */
-    private static int groupRank(String group) {
-        List<String> preferred = List.of("RD1", "RD2", "GY3F", "GY4F", "GYB1F", "SY");
-        int i = preferred.indexOf(group);
-        return i >= 0 ? i : preferred.size();
+    /** 楼层推断：显式 `2F` → 房号地下室段 `E10-B106` → 房号首字 `(465)`；推不出返回 null */
+    private static String inferFloor(String name) {
+        Matcher fm = FLOOR.matcher(name);
+        if (fm.find()) {
+            return fm.group(1);
+        }
+        Matcher bm = ROOM_BASEMENT.matcher(name);
+        if (bm.find()) {
+            return "B" + bm.group(1) + "F";
+        }
+        Matcher rm = ROOM.matcher(name);
+        if (rm.find()) {
+            Matcher d = Pattern.compile("(\\d{3,})").matcher(rm.group(1));
+            if (d.find()) {
+                return d.group(1).charAt(0) + "F";
+            }
+        }
+        return null;
+    }
+
+    /** B1F 分区：房号里的 `E10-B106` / `E11A-B115` → `E10区` / `E11A区` */
+    private static String zoneOf(String name) {
+        Matcher m = ROOM_ZONE.matcher(name);
+        return m.find() ? "E" + m.group(1) + "区" : null;
+    }
+
+    /** 楼层顺序与 ICC 一致：B1F、1F、2F、3F、4F */
+    private static int floorRank(String floor) {
+        if ("B1F".equals(floor)) return 0;
+        Matcher m = Pattern.compile("^(\\d+)F$").matcher(floor);
+        return m.matches() ? Integer.parseInt(m.group(1)) : 90;
+    }
+
+    /** 分区顺序：E10、E11A、E11B、E11C、E12 */
+    private static int zoneRank(String zone) {
+        List<String> order = List.of("E10区", "E11A区", "E11B区", "E11C区", "E12区");
+        int i = order.indexOf(zone);
+        return i >= 0 ? i : order.size();
     }
 
     private long insertNode(long parentId, String name, int sortOrder) {
@@ -266,34 +335,70 @@ public class DahuaVideoChannelCategoryService {
      * 只填空着的，人工改过的不覆盖；表里没有的（SY-NVR-* 那批）留空，等人工补。
      */
     private void seedLinkUrls() {
-        try {
-            // 已经有链接就直接跳过：这段是 305 条 UPDATE，早先每次都跑，
-            // 把分类树接口拖到了 600ms（实测）。播种本来就只需要一次。
-            if (channelMapper.countLinkUrls() > 0) {
-                return;
-            }
-            ClassPathResource res = new ClassPathResource(LINKS_CSV);
-            if (!res.exists()) {
-                return;
-            }
-            int n = 0;
-            try (BufferedReader r = new BufferedReader(
-                    new InputStreamReader(res.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    if (line.isBlank() || line.startsWith("#")) {
-                        continue;
-                    }
-                    String[] parts = line.split(",", 2);
-                    if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
-                        continue;
-                    }
-                    n += channelMapper.seedLinkUrlIfEmpty(parts[0].trim(), parts[1].trim());
-                }
-            }
-            log.info("[video-channel] 已补写设备跳转地址 {} 条", n);
-        } catch (Exception e) {
-            log.warn("[video-channel] 跳转地址种子写入失败：{}", e.getMessage());
+        if (linkSeedDone) {
+            return;
         }
+        synchronized (this) {
+            if (linkSeedDone) {
+                return;
+            }
+            // 通道缓存还没同步进来时先不标记完成，等下次请求再播
+            if (channelMapper.countVideoChannels() == 0) {
+                return;
+            }
+            try {
+                int n = 0;
+                ClassPathResource res = new ClassPathResource(LINKS_CSV);
+                if (res.exists()) {
+                    try (BufferedReader r = new BufferedReader(
+                            new InputStreamReader(res.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = r.readLine()) != null) {
+                            if (line.isBlank() || line.startsWith("#")) {
+                                continue;
+                            }
+                            String[] parts = line.split(",", 2);
+                            if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                                continue;
+                            }
+                            n += channelMapper.seedLinkUrlIfEmpty(parts[0].trim(), parts[1].trim());
+                        }
+                    }
+                }
+                int fixed = fixWrongLinkUrls();
+                linkSeedDone = true;
+                int empty = channelMapper.countEmptyVideoLinks();
+                log.info("[video-channel] 跳转地址补写 {} 条，定向修正 {} 条，仍为空 {} 条", n, fixed, empty);
+            } catch (Exception e) {
+                log.warn("[video-channel] 跳转地址种子写入失败：{}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 同楼层 RD1/RD2 的 JK 号会重号，通道名里又没带组，早期种子按 JK 号把 RD2 房间对到了 RD1 的地址。
+     * 修正文件给出「通道 → 旧地址 → 正确地址」，只改当前仍是旧值的行，人工改过的不动。
+     */
+    private int fixWrongLinkUrls() throws IOException {
+        ClassPathResource res = new ClassPathResource(LINK_FIXES_CSV);
+        if (!res.exists()) {
+            return 0;
+        }
+        int fixed = 0;
+        try (BufferedReader r = new BufferedReader(
+                new InputStreamReader(res.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (line.isBlank() || line.startsWith("#")) {
+                    continue;
+                }
+                String[] parts = line.split(",", 3);
+                if (parts.length != 3 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+                    continue;
+                }
+                fixed += channelMapper.fixLinkUrlIfOld(parts[0].trim(), parts[1].trim(), parts[2].trim());
+            }
+        }
+        return fixed;
     }
 }

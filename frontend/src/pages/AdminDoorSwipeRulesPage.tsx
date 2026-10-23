@@ -766,7 +766,7 @@ function OperationLogsTab() {
                       {r.success === 1 ? "成功" : "失败"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-xs text-[var(--app-color-text-secondary)]">{r.detail || "-"}</td>
+                  <td className="px-3 py-2 text-xs text-[var(--app-color-text-secondary)]">{r.detailDisplayZh || r.detail || "-"}</td>
                 </tr>
               ))}
             </tbody>

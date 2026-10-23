@@ -292,7 +292,7 @@ export default function StudentTrainingPage() {
         <div className="list-card list-card-body">
           <div className="list-card-scroll">
             {tab === "enrolled" ? (
-              <StudentTrainingMyContent view={view} campus={activeCampus} />
+              <StudentTrainingMyContent view={view} campus={activeCampus} onGoEnroll={() => setTab("list")} />
             ) : (
               <>
                 <div className="list-count">共 {activeItems.length} 条培训</div>

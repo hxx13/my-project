@@ -14,6 +14,8 @@ public interface DahuaDepartmentCacheMapper {
                                     @Param("offset") int offset,
                                     @Param("pageSize") int pageSize);
 
+    List<DahuaDepartmentCache> listAll();
+
     int count(@Param("keyword") String keyword);
 
     String selectNameById(@Param("id") Long id);

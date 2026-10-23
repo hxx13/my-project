@@ -10,6 +10,7 @@ import {
     hexToRgba,
     readDashboardNightChartPalette,
 } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+import { useHidePuxi } from "@/features/dashboard/useHidePuxi";
 
 const PD_COLORS = ["#2d5cf7", "#5b82ff", "#8faeff", "#c2d5ff", "#e0eaff"];
 const PX_COLORS = ["#8e44ad", "#a55ebf", "#bf7fd3", "#d8a3e6", "#efccf8"];
@@ -17,6 +18,7 @@ const PD_COLORS_SF = ["#38bdf8", "#22d3ee", "#67e8f9", "#a5f3fc", "#cffafe"];
 const PX_COLORS_SF = ["#c084fc", "#e879f9", "#f0abfc", "#f5d0fe", "#fae8ff"];
 
 export function NestedPieChart() {
+    const hidePuxi = useHidePuxi();
     const pieStats = useEventStore((state) => state.pieStats);
     const setPieStats = useEventStore((state) => state.setPieStats);
     const [isColdStarting, setIsColdStarting] = useState(true);
@@ -122,23 +124,27 @@ export function NestedPieChart() {
                 formatter: "{b}: {c}次 ({d}%)",
             },
             series: [
-                {
-                    name: "浦西房间分布",
-                    type: "pie" as const,
-                    radius: ["20%", "38%"],
-                    center: ["50%", "55%"],
-                    itemStyle: {
-                        borderRadius: 4,
-                        borderColor: sliceBorder,
-                        borderWidth: 2,
-                        shadowBlur,
-                        shadowColor: sciFi ? "rgba(56, 189, 248, 0.35)" : "rgba(0,0,0,0.1)",
-                    },
-                    label: { show: false },
-                    labelLine: { show: false },
-                    color: pxColors,
-                    data: hasPuxiData && pieStats?.puxiPie ? pieStats.puxiPie : emptyPuxi,
-                },
+                ...(hidePuxi
+                    ? []
+                    : [
+                          {
+                              name: "浦西房间分布",
+                              type: "pie" as const,
+                              radius: ["20%", "38%"],
+                              center: ["50%", "55%"],
+                              itemStyle: {
+                                  borderRadius: 4,
+                                  borderColor: sliceBorder,
+                                  borderWidth: 2,
+                                  shadowBlur,
+                                  shadowColor: sciFi ? "rgba(56, 189, 248, 0.35)" : "rgba(0,0,0,0.1)",
+                              },
+                              label: { show: false },
+                              labelLine: { show: false },
+                              color: pxColors,
+                              data: hasPuxiData && pieStats?.puxiPie ? pieStats.puxiPie : emptyPuxi,
+                          },
+                      ]),
                 {
                     name: "浦东房间分布",
                     type: "pie" as const,
@@ -172,7 +178,7 @@ export function NestedPieChart() {
                 },
             ],
         };
-    }, [sciFi, night, nightPalette, pdNightColors, pxNightColors, hasPudongData, hasPuxiData, pieStats]);
+    }, [sciFi, night, nightPalette, pdNightColors, pxNightColors, hasPudongData, hasPuxiData, pieStats, hidePuxi]);
 
     if (isColdStarting)
         return (
@@ -198,6 +204,8 @@ export function NestedPieChart() {
                     <MapPin className="w-3 h-3" /> 浦东:{" "}
                     <span className="text-[12px] font-black">{totalPD}</span>
                 </div>
+                {hidePuxi ? null : (
+                    <>
                 <div
                     className={`w-[1px] h-3 ${sciFi ? "bg-cyan-500/30" : night ? "bg-[var(--dash-night-border-warm)]" : "bg-black/10"}`}
                 />
@@ -209,6 +217,8 @@ export function NestedPieChart() {
                     <MapPin className="w-3 h-3" /> 浦西:{" "}
                     <span className="text-[12px] font-black">{totalPX}</span>
                 </div>
+                    </>
+                )}
             </div>
             <ReactECharts key={sciFi ? "sf" : night ? "night" : "std"} option={option} style={{ height: "100%", width: "100%" }} />
         </div>

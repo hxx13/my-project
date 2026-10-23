@@ -82,6 +82,7 @@ public class AuthController {
     private final TurnstileVerificationService turnstileVerificationService;
     private final IamOAuthLoginService iamOAuthLoginService;
     private final EmailVerificationCodeService emailVerificationCodeService;
+    private final com.example.demo.modules.student.service.StudentMobileTokenService studentMobileTokenService;
     private final Object sendCodeLock = new Object();
 
     public AuthController(UserMapper userMapper,
@@ -95,7 +96,8 @@ public class AuthController {
                           NotifyBindingService notifyBindingService,
                           TurnstileVerificationService turnstileVerificationService,
                           IamOAuthLoginService iamOAuthLoginService,
-                          EmailVerificationCodeService emailVerificationCodeService) {
+                          EmailVerificationCodeService emailVerificationCodeService,
+                          com.example.demo.modules.student.service.StudentMobileTokenService studentMobileTokenService) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
@@ -108,6 +110,31 @@ public class AuthController {
         this.turnstileVerificationService = turnstileVerificationService;
         this.iamOAuthLoginService = iamOAuthLoginService;
         this.emailVerificationCodeService = emailVerificationCodeService;
+        this.studentMobileTokenService = studentMobileTokenService;
+    }
+
+    /**
+     * 免登录二维码换票：口令校验通过后签发与账号密码登录完全一致的登录态。
+     * 公开接口，错误信息不区分「不存在」与「已作废」以外的情况，避免泄露账号信息。
+     */
+    @PostMapping("/login/mobile-code")
+    @Operation(summary = "免登录二维码换取登录态")
+    public Result<?> loginByMobileCode(@RequestBody Map<String, String> body) {
+        String code = body == null ? null : body.get("code");
+        if (!StringUtils.hasText(code)) {
+            return Result.fail(400, "链接无效，请重新获取");
+        }
+        String userId;
+        try {
+            userId = studentMobileTokenService.validateToken(code);
+        } catch (com.example.demo.common.exception.TwinBusinessException e) {
+            return Result.fail(400, e.getMessage());
+        }
+        User user = userMapper.findById(userId);
+        if (user == null || isDisabled(user)) {
+            return Result.fail(403, "账号不可用，请联系管理员");
+        }
+        return authService.generateAuthResult(user);
     }
 
     @PostMapping("/login/web")

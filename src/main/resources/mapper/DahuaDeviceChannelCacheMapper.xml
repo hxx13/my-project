@@ -49,6 +49,45 @@
         WHERE id = #{id}
     </update>
 
+    <update id="reassignRemarkCategory">
+        UPDATE dahua_device_channel_cache
+        SET remark_category_id = #{toId}
+        WHERE remark_category_id = #{fromId}
+    </update>
+
+    <select id="listDoorChannelsLite" resultType="java.util.LinkedHashMap">
+        SELECT id,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               remark_category_id AS remarkCategoryId
+        FROM dahua_device_channel_cache
+        WHERE unit_type = 7
+        ORDER BY id ASC
+    </select>
+
+    <select id="findByChannelCode" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelCache">
+        SELECT id,
+               device_code AS deviceCode,
+               unit_type AS unitType,
+               unit_seq AS unitSeq,
+               channel_seq AS channelSeq,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               owner_code AS ownerCode,
+               device_category AS deviceCategory,
+               device_type AS deviceType,
+               link_url AS linkUrl
+        FROM dahua_device_channel_cache
+        WHERE channel_code = #{channelCode}
+        LIMIT 1
+    </select>
+
+    <update id="updateChannelName">
+        UPDATE dahua_device_channel_cache
+        SET channel_name = #{channelName}
+        WHERE channel_code = #{channelCode}
+    </update>
+
     <update id="updateVideoCategory">
         UPDATE dahua_device_channel_cache
         SET video_category_id = #{videoCategoryId}
@@ -59,6 +98,12 @@
         UPDATE dahua_device_channel_cache
         SET video_category_id = #{videoCategoryId}
         WHERE video_category_id = #{nodeId}
+    </update>
+
+    <update id="updateVideoCategoryByChannelCode">
+        UPDATE dahua_device_channel_cache
+        SET video_category_id = #{videoCategoryId}
+        WHERE channel_code = #{channelCode}
     </update>
 
     <update id="updateLinkUrl">
@@ -73,6 +118,14 @@
         SET link_url = #{linkUrl}
         WHERE channel_code = #{channelCode}
           AND (link_url IS NULL OR link_url = '')
+    </update>
+
+    <!-- 定向修正：只有当前值仍是旧的错误地址时才改，人工改过的不动 -->
+    <update id="fixLinkUrlIfOld">
+        UPDATE dahua_device_channel_cache
+        SET link_url = #{newUrl}
+        WHERE channel_code = #{channelCode}
+          AND link_url = #{oldUrl}
     </update>
 
     <!-- 重建分类树前，把这些大类的通道全部退回未分类 -->

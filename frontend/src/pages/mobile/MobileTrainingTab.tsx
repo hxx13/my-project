@@ -270,7 +270,12 @@ export default function MobileTrainingTab({ onGoVideoLearning }: { onGoVideoLear
             <Loader2 className="mr-2 size-4 animate-spin" />加载中…
           </div>
         ) : enrollments.length === 0 ? (
-          <div className="py-16 text-center text-[13px] text-[var(--app-color-text-tertiary)]">暂无报名记录</div>
+          <div className="flex flex-col items-center justify-center gap-3 py-20">
+            <GraduationCap className="size-9" style={{ color: "var(--app-color-text-tertiary)", opacity: 0.35 }} />
+            <p className="text-[13px] text-[var(--app-color-text-tertiary)]">还没有报名任何培训</p>
+            <p className="text-[11px] text-[var(--app-color-text-tertiary)]">去培训列表挑一场报名吧</p>
+            <AdminButton type="button" onClick={() => setTab("list")}>去报名</AdminButton>
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
             {enrollments.map((e) => {

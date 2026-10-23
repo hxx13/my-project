@@ -8,15 +8,13 @@ import {
   Star,
   ShieldCheck,
   ShieldAlert,
-  DoorOpen,
-  FileText,
-  BarChart3,
   Bell,
   ChevronRight,
-  Clock,
   LogOut,
   Settings,
   Smartphone,
+  QrCode,
+  X,
   PawPrint,
   ScrollText,
   PenLine,
@@ -39,6 +37,7 @@ import RingAvatar from "./MobileRingAvatar";
 import { type MobileShellTabKey } from "./mobileShellLayout";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 import MySignatureCard from "@/components/signature/MySignatureCard";
+import { MobileQrCard } from "@/components/scanner/MobileQrCard";
 
 import { appConfirm } from "@/lib/appDialog";
 /* ================================================================== */
@@ -49,16 +48,12 @@ function levelFromExp(exp: number) {
 /* ================================================================== */
 interface MobileMineTabProps {
   data: NonNullable<MobileCenterData>;
-  expiresAt?: string;
-  jwtMode?: boolean;
   onNav?: (tab: MobileShellTabKey) => void;
   onOpenAnnouncements?: () => void;
 }
 
 export default function MobileMineTab({
   data,
-  expiresAt,
-  jwtMode,
   onNav,
   onOpenAnnouncements,
 }: MobileMineTabProps) {
@@ -78,6 +73,7 @@ export default function MobileMineTab({
   const [currentSendKey, setCurrentSendKey] = useState(false);
   const [wxPusherOpen, setWxPusherOpen] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const [currentWxPusher, setCurrentWxPusher] = useState(false);
   const personnelId = data.userId || "";
 
@@ -93,7 +89,7 @@ export default function MobileMineTab({
   const canReturnToStaff = impersonating && authStorage.hasPreviousSession();
 
   useEffect(() => {
-    if (!jwtMode || isStudentAccount()) return;
+    if (isStudentAccount()) return;
     const token = authStorage.getToken();
     if (!token) return;
     fetch("/api/admin/account/binding", { headers: { Authorization: "Bearer " + token } })
@@ -103,7 +99,7 @@ export default function MobileMineTab({
         setAroBindingName(body?.data?.name || "");
       })
       .catch(() => setHasAroBinding(false));
-  }, [jwtMode]);
+  }, []);
 
   const handleSwitchToStudent = async () => {
     const token = authStorage.getToken();
@@ -374,20 +370,6 @@ export default function MobileMineTab({
           )}
         </div>
 
-        {!jwtMode && expiresAt && (
-          <div
-            className="mt-3 pt-3 text-center"
-            style={{ borderTop: "1px solid rgba(30,55,90,0.05)" }}
-          >
-            <span
-              className="inline-flex items-center gap-1 text-[10px] rounded-full px-2.5 py-1"
-              style={{ background: "rgba(172,23,54,0.06)", color: "#ac1736" }}
-            >
-              <Clock className="size-2.5" />
-              有效期至 {expiresAt.slice(0, 10)}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* 视角切换（双视角账号）：与小程序「我的」同一套入口 */}
@@ -449,24 +431,19 @@ export default function MobileMineTab({
         }}
       >
         {[
-          ...(jwtMode
-            ? [
-                { label: "动物订购", color: "#0ea5e9", icon: PawPrint, action: () => onNav?.("animalOrder") },
-                { label: "培训报名", color: "#0891b2", icon: GraduationCap, action: () => onNav?.("training") },
-                { label: "答题", color: "#16a34a", icon: SquarePen, action: () => onNav?.("exam") },
-                { label: "我的证书", color: "#ca8a04", icon: Award, action: () => onNav?.("certificates") },
-                { label: "健康调查表", color: "#e11d48", icon: HeartPulse, action: () => onNav?.("health") },
-              ]
-            : []),
+          { label: "动物订购", color: "#0ea5e9", icon: PawPrint, action: () => onNav?.("animalOrder") },
+          { label: "培训报名", color: "#0891b2", icon: GraduationCap, action: () => onNav?.("training") },
+          { label: "答题", color: "#16a34a", icon: SquarePen, action: () => onNav?.("exam") },
+          { label: "我的证书", color: "#ca8a04", icon: Award, action: () => onNav?.("certificates") },
+          { label: "健康调查表", color: "#e11d48", icon: HeartPulse, action: () => onNav?.("health") },
           /* SOP 只对教职工侧账号开放。判定走 isStudentAccount()（全站唯一口径：
              accountSource > role > id 前缀）—— 账号分学生/教职工两套，同一个人两边都可能有，
              别在这里按 role 自己判，否则教职工切学生视图时会误判。 */
-          ...(jwtMode && !isStudentAccount()
+          ...(!isStudentAccount()
             ? [{ label: "SOP 操作", color: "#0284c7", icon: ScrollText, path: "/m/sop" }]
             : []),
-          { label: "我的房间", color: "#6366f1", icon: DoorOpen, action: undefined },
-          { label: "出入记录", color: "#10b981", icon: FileText, action: undefined },
-          { label: "数据统计", color: "#f59e0b", icon: BarChart3, action: undefined },
+          { label: "免登录二维码", color: "#0f766e", icon: QrCode, action: () => setQrOpen(true) },
+          { label: "违规记录", color: "#b45309", icon: ShieldAlert, action: () => onNav?.("violations") },
           { label: "通知公告", color: "#ef4444", icon: Bell, action: onOpenAnnouncements },
           /* 电子签名：学生与教职工都要签（会印在转移单、领用单上），所以不按身份收口。
              手机上直接手写；要换设备时卡片里还能出二维码。 */
@@ -503,9 +480,8 @@ export default function MobileMineTab({
         ))}
       </div>
 
-      {/* Logout — JWT mode only */}
-      {jwtMode && (
-        <div className="mx-4 mt-4">
+      {/* Logout */}
+      <div className="mx-4 mt-4">
           <button
             type="button"
             onClick={handleLogout}
@@ -526,6 +502,38 @@ export default function MobileMineTab({
             </span>
             <ChevronRight className="size-4" style={{ color: "#c8c9cc" }} />
           </button>
+        </div>
+
+      {/* 免登录二维码 */}
+      {qrOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          onClick={() => setQrOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold" style={{ color: "#323233" }}>
+                免登录二维码
+              </span>
+              <button
+                type="button"
+                onClick={() => setQrOpen(false)}
+                className="rounded-lg p-1 active:bg-gray-100"
+                aria-label="关闭"
+              >
+                <X className="size-4" style={{ color: "#969799" }} />
+              </button>
+            </div>
+            <MobileQrCard userId={authStorage.getUserInfo()?.id || personnelId} />
+            <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "#969799" }}>
+              扫码即可免登录进入手机端。请本人保存或拍照留存，等同于登录凭证，请勿转发。
+              遗失或泄露请点「重新生成」，旧码立即失效。
+            </p>
+          </div>
         </div>
       )}
 

@@ -30,11 +30,72 @@ public class DahuaChannelRemarkSchemaMigrator implements ApplicationRunner {
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS dahua_device_channel_remark_category (
                         id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '备注分类ID',
+                        parent_id BIGINT NULL COMMENT '父文件夹ID，NULL=根层',
                         name VARCHAR(128) NOT NULL COMMENT '分类名称（用于通道备注下拉）',
                         sort_order INT NOT NULL DEFAULT 0 COMMENT '排序，越小越靠前',
                         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE KEY uk_dcc_remark_cat_name (name)
+                        UNIQUE KEY uk_dcc_remark_cat_parent_name (parent_id, name),
+                        KEY idx_dcc_remark_cat_parent (parent_id)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通道编码备注分类（可配置）'
+                    """);
+
+            // 旧库是 name 全局唯一，改成“父级 + 名称”，允许不同楼层下同名子文件夹
+            Integer oldUk = jdbcTemplate.queryForObject(
+                    """
+                            SELECT COUNT(*) FROM information_schema.STATISTICS
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = 'dahua_device_channel_remark_category'
+                              AND INDEX_NAME = 'uk_dcc_remark_cat_name'
+                            """,
+                    Integer.class);
+            if (oldUk != null && oldUk > 0) {
+                jdbcTemplate.execute("""
+                        ALTER TABLE dahua_device_channel_remark_category
+                        DROP INDEX uk_dcc_remark_cat_name
+                        """);
+                log.info("[dahua-schema] 已移除旧的分类名称全局唯一索引");
+            }
+            Integer newUk = jdbcTemplate.queryForObject(
+                    """
+                            SELECT COUNT(*) FROM information_schema.STATISTICS
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = 'dahua_device_channel_remark_category'
+                              AND INDEX_NAME = 'uk_dcc_remark_cat_parent_name'
+                            """,
+                    Integer.class);
+            if (newUk != null && newUk == 0) {
+                jdbcTemplate.execute("""
+                        ALTER TABLE dahua_device_channel_remark_category
+                        ADD UNIQUE KEY uk_dcc_remark_cat_parent_name (parent_id, name)
+                        """);
+                log.info("[dahua-schema] 已添加分类「父级+名称」唯一索引");
+            }
+
+            Integer parentColCount = jdbcTemplate.queryForObject(
+                    """
+                            SELECT COUNT(*) FROM information_schema.COLUMNS
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = 'dahua_device_channel_remark_category'
+                              AND COLUMN_NAME = 'parent_id'
+                            """,
+                    Integer.class);
+            if (parentColCount != null && parentColCount == 0) {
+                jdbcTemplate.execute("""
+                        ALTER TABLE dahua_device_channel_remark_category
+                        ADD COLUMN parent_id BIGINT NULL COMMENT '父文件夹ID，NULL=根层'
+                        AFTER id
+                        """);
+                jdbcTemplate.execute("""
+                        CREATE INDEX idx_dcc_remark_cat_parent ON dahua_device_channel_remark_category (parent_id)
+                        """);
+                log.info("[dahua-schema] 已添加列 dahua_device_channel_remark_category.parent_id");
+            }
+
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS dahua_door_category_seed (
+                        id TINYINT PRIMARY KEY COMMENT '固定 1',
+                        applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门禁分类种子执行标记'
                     """);
 
             Integer tableExists = jdbcTemplate.queryForObject(
@@ -42,8 +103,7 @@ public class DahuaChannelRemarkSchemaMigrator implements ApplicationRunner {
                             SELECT COUNT(*) FROM information_schema.TABLES
                             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dahua_device_channel_cache'
                             """,
-                    Integer.class);
-            if (tableExists == null || tableExists == 0) {
+                    Integer.class);            if (tableExists == null || tableExists == 0) {
                 log.warn("[dahua-schema] 无表 dahua_device_channel_cache，跳过 remark 列迁移");
                 return;
             }

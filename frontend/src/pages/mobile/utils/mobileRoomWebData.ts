@@ -2,7 +2,7 @@
  * 手机版房间页数据 — 与小程序 pages/room 同源：
  * wechat-overview + scan/analyze + roomDashboard.buildCampusFloorTree
  */
-import { fetchMobileRoomDashboard, type MobileRoomAnalyzeDto } from "@/api/domains/mobileStudent.api";
+import { type MobileRoomAnalyzeDto } from "@/api/domains/mobileStudent.api";
 import { fetchStudentMobileRoomDashboard } from "@/api/domains/studentMobile.api";
 import {
   buildCampusFloorTree,
@@ -69,30 +69,7 @@ export function previewMetaToAccessItem(room: RoomPreviewMeta) {
   };
 }
 
-export async function fetchMobileRoomsPageBundle(token: string): Promise<MobileRoomsPageBundle> {
-  const dashboard = await fetchMobileRoomDashboard(token);
-  const overviewRows = (dashboard.overview ?? []) as OverviewRoomRaw[];
-  const analyze = dashboard.analyze ?? {};
-  const scanAnalyze = normalizeMobileScanAnalyze(analyze as Record<string, unknown>);
-
-  const dtoForMerge: ScanAnalyzeDto | null =
-    analyze.success === true ? (analyze as ScanAnalyzeDto) : null;
-  const myRaw = buildMyRooms(overviewRows, dtoForMerge);
-  const myRoomPreviews = myRaw.map((r) => overviewToPreviewMeta(r));
-
-  return {
-    overviewRows,
-    overviewIndex: buildOverviewIndex(overviewRows),
-    campusTree: buildCampusFloorTree(overviewRows),
-    totalCount: overviewRows.length,
-    myRoomPreviews,
-    analyze,
-    scanAnalyze,
-    userId: dashboard.userId,
-  };
-}
-
-/** JWT 模式：通过 authHttp 获取房间页数据（无需 token） */
+/** 通过登录态获取房间页数据 */
 export async function fetchStudentMobileRoomsPageBundle(): Promise<MobileRoomsPageBundle> {
   const dashboard = await fetchStudentMobileRoomDashboard();
   const overviewRows = (dashboard.overview ?? []) as OverviewRoomRaw[];

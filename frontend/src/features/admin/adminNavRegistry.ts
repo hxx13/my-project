@@ -21,6 +21,7 @@ import {
   DoorClosed,
   DoorOpen,
   Download,
+  Eye,
   FileText,
   GitBranch,
   KeyRound,
@@ -33,7 +34,6 @@ import {
   Monitor,
   MonitorPlay,
   Package,
-  Server,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -379,6 +379,17 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/video-wall", "SUPER_ADMIN"),
       },
       {
+        id: "live-preview",
+        path: "/admin/live-preview",
+        label: "实时监控预览",
+        icon: Eye,
+        alias: ["实时预览", "监控预览", "视频预览", "live", "preview", "camera"],
+        homeTone: "from-cyan-400 to-blue-500",
+        // 与视频上墙同档：都是对现场画面的直接操作，只放给超管
+        fallbackMinRole: "SUPER_ADMIN",
+        sidebarVisible: (ctx) => show(ctx, "/admin/live-preview", "SUPER_ADMIN"),
+      },
+      {
         id: "face-debug",
         path: "/admin/face-debug",
         label: "人脸识别调试",
@@ -544,15 +555,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
     id: "aro-room-link",
     title: "ARO 房间与联动",
     items: [
-      {
-        id: "door-group",
-        path: "/admin/door-group-storage",
-        label: "门组落库",
-        icon: Server,
-        homeTone: "from-emerald-400 to-green-500",
-        fallbackMinRole: "ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/door-group-storage", "ADMIN"),
-      },
       {
         id: "device-ch",
         path: "/admin/device-channels",
@@ -950,7 +952,6 @@ function normalizePath(path: string): string {
 export function inferHomeSectionTitleForUnknownPath(path: string): string {
   const p = normalizePath(path);
   if (
-    p === "/admin/door-group-storage" ||
     p === "/admin/device-channels" ||
     p === "/admin/aro-rooms" ||
     p === "/admin/cage-shelves" ||
@@ -962,7 +963,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
   }
   if (
     p === "/admin/dahua-issue" ||
-    p === "/admin/door-control" ||
+    p.startsWith("/admin/door-control") ||
     p.startsWith("/admin/access-rules") ||
     p.startsWith("/admin/dahua-swing-") ||
     p === "/admin/access-audit-source" ||

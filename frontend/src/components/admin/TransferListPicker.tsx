@@ -25,6 +25,8 @@ interface Props {
   pickedSearchPlaceholder?: string;
   /** 渲染在「可选」列搜索框上方（如分类筛选下拉） */
   availableHeader?: ReactNode;
+  /** 显示「全选筛选结果 / 清空已选」快捷操作 */
+  showSelectAll?: boolean;
 }
 
 /**
@@ -43,6 +45,7 @@ export function TransferListPicker({
   availableSearchPlaceholder = "搜索可选",
   pickedSearchPlaceholder = "搜索已选",
   availableHeader,
+  showSelectAll = false,
 }: Props) {
   const [availKeyword, setAvailKeyword] = useState("");
   const [pickedKeyword, setPickedKeyword] = useState("");
@@ -81,7 +84,26 @@ export function TransferListPicker({
       <div className="flex gap-2">
         {/* 左侧：可选 */}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="shrink-0 text-xs text-[var(--twin-mute)]">{availableLabel}</div>
+          <div className="flex shrink-0 items-center justify-between">
+            <div className="text-xs text-[var(--twin-mute)]">{availableLabel}</div>
+            {showSelectAll && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  className="text-[var(--twin-primary)] disabled:opacity-40"
+                  disabled={available.length === 0}
+                  onClick={() => onChange(Array.from(new Set([...selected, ...available.map((o) => o.value)])))}
+                >
+                  全选当前筛选（{available.length}）
+                </button>
+                {selected.length > 0 && (
+                  <button type="button" className="text-[var(--twin-mute)]" onClick={() => onChange([])}>
+                    清空
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {availableHeader}
           <input
             className="h-8 w-full shrink-0 rounded border border-[var(--twin-hairline)] px-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]"

@@ -941,12 +941,12 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
 
         <div className="flex min-h-0 flex-1 flex-row">
           {drillStack.length > 0 && sidebarParentType && (
-            <aside className="w-[140px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] py-2 flex flex-col">
-              <button type="button" onClick={handleGoBack} className="flex items-center gap-1 px-3 py-2 text-xs font-medium text-[var(--twin-link)] hover:bg-[var(--twin-canvas)] transition-colors border-b border-[var(--twin-hairline)] mb-1">
-                <span className="text-sm leading-none">&larr;</span>
+            <aside className="w-[132px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[#e9eef6] p-2 flex flex-col">
+              <button type="button" onClick={handleGoBack} className="mb-2 flex w-full items-center justify-center gap-1 rounded-lg bg-white/60 px-2 py-2.5 text-[12px] font-semibold text-[#2563eb] transition-colors hover:bg-white">
+                <span className="leading-none">&larr;</span>
                 <span>返回上一级</span>
               </button>
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--twin-mute)]">
+              <div className="px-2 py-1 text-[10px] font-semibold tracking-wide text-[var(--twin-mute)]">
                 {getTypeConfig(sidebarParentType)?.label ?? sidebarParentType}
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto">
@@ -961,10 +961,10 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                         key={si.id}
                         type="button"
                         onClick={() => handleSidebarSwitch(si)}
-                        className={`block w-full px-3 py-2 text-left text-xs leading-snug transition-colors ${
+                        className={`mb-1.5 block w-full rounded-lg px-2 py-2.5 text-center text-[12px] leading-snug transition-colors ${
                           activeParentId === si.id
-                            ? "border-l-2 border-[var(--twin-link)] bg-[var(--twin-canvas)] font-semibold text-[var(--twin-link)]"
-                            : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+                            ? "bg-[#2563eb] font-semibold text-white shadow-[0_3px_8px_rgba(37,99,235,0.28)]"
+                            : "text-[var(--twin-body)] hover:bg-white/60"
                         }`}
                       >
                         <span className="truncate block">{String(fd?.title || fd?.subtitle || `ID ${si.id}`)}</span>

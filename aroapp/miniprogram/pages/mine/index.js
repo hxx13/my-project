@@ -727,6 +727,7 @@ Page({
         hasMinRole(role, 'SUPER_ADMIN') || this._orderTimeBusinessGranted === true,
       // 培训与考核：受训人既可能是学生也可能是教职工，默认学生级别即可见
       canGoStudentTraining: pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentTraining/index', role, 'STUDENT'),
+      canGoStudentViolations: pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentViolations/index', role, 'STUDENT'),
       canGoStudentExam: pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentExam/index', role, 'STUDENT'),
       // 培训管理（教职工端）：审核/房间下放/发布编辑培训。两道门——① 按视角挡（学生账号的
       // 角色档可能到 STAFF，只判角色会让入口漏进学生视角）；② 仅「饲养组长」身份可见。
@@ -1367,6 +1368,10 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-door/pages/cardPrint/index' });
+  },
+
+  goStudentViolations() {
+    wx.navigateTo({ url: '/package-student/pages/studentViolations/index' });
   },
 
   goStudentTraining() {

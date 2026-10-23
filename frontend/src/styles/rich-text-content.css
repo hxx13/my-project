@@ -174,18 +174,16 @@
     border-radius: var(--app-radius-element);
   }
 
-  /* 公告视频组：随正文滚动，到顶吸附；多个视频竖排 */
-  .rt-video-stack {
-    position: sticky;
-    top: 0;
-    z-index: 6;
+  /* 公告视频区：常驻卡片顶部，正文在下方滚动；只渲染一份视频 */
+  .rt-video-pinned {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin: 0.5rem 0;
+    padding-bottom: 8px;
+    flex-shrink: 0;
   }
 
-  .rt-video-stack > video {
+  .rt-video-pinned > video {
     display: block;
     width: 100%;
     max-height: 220px;

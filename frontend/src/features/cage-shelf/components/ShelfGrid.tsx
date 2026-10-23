@@ -13,6 +13,15 @@ import { authStorage } from "@/features/auth/authStorage";
 import { useSyncLock, LockBadge, type ScopeRef, type LockState } from "./SyncLockContext";
 import type { CageOpMark } from "../useCageOpSelect";
 
+/** 笼架级特殊状态图例：有哪个就画哪个（颜色跟格子底色同一套语义） */
+const SHELF_STATUS_DOTS: { code: string; label: string; color: string }[] = [
+  { code: "NEED_DIVIDE", label: "需分笼", color: "#eab308" },
+  { code: "HEALTH_ABNORMAL", label: "健康异常", color: "#a855f7" },
+  { code: "ANIMAL_TRANSFER", label: "动物转移", color: "#06b6d4" },
+  { code: "SPECIAL_FEEDING", label: "特殊饲养", color: "#ef4444" },
+  { code: "COHABITATION", label: "合笼", color: "#10b981" },
+];
+
 /**
  * ShelfGrid — 单个笼架的 8×10 网格视图
  *
@@ -114,6 +123,17 @@ export function ShelfGrid({
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
+  /** 本架出现过的特殊状态码（架头只画存在的，一个也画） */
+  const shelfStatusCodes = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of cells) {
+      for (const st of ((c as any).specialStatuses ?? [])) {
+        const code = String(st?.code ?? "");
+        if (code) s.add(code);
+      }
+    }
+    return s;
+  }, [cells]);
   /** 当前账号，用于把「划分名单」判定成「划给我」还是「划给别人」 */
   const meId = String(authStorage.getUserInfo()?.id ?? "");
 
@@ -228,17 +248,24 @@ export function ShelfGrid({
       }${glowColor ? " cage-shelf-glow" : ""}`}
       style={glowColor ? ({ ["--mode-color" as string]: glowColor } as React.CSSProperties) : undefined}
     >
-      <div className="mb-2 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-1.5 min-w-0">
+      {/* 固定一行高：图例再长/再多也只在本行内裁剪，绝不把下方格子往下挤 */}
+      <div className="mb-2 flex h-5 shrink-0 items-center justify-between gap-2 overflow-hidden">
+        <div className="flex min-w-0 shrink items-center gap-1.5">
           <div className="truncate text-sm font-semibold text-[var(--twin-ink)]">{title}</div>
           {shelfChain.length > 0 && <LockBadge chain={shelfChain} label={title} size={3.5} />}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 shrink items-center justify-end gap-2 overflow-hidden">
           {detail?.shelfMeta && (
-            <div className="text-[11px] text-[var(--twin-mute)]">
-              {detail.shelfMeta.campusName}/{detail.shelfMeta.areaName}/
-              {detail.shelfMeta.floorName}/{detail.shelfMeta.roomName}/
-              {detail.shelfMeta.shelveName || detail.shelfMeta.shelveId}
+            <div
+              className="flex min-w-0 items-center gap-2 overflow-hidden"
+              title={[detail.shelfMeta.campusName, detail.shelfMeta.areaName, detail.shelfMeta.floorName, detail.shelfMeta.roomName, detail.shelfMeta.shelveName || detail.shelfMeta.shelveId].filter(Boolean).join("/")}
+            >
+              {SHELF_STATUS_DOTS.filter((m) => shelfStatusCodes.has(m.code)).map((m) => (
+                <span key={m.code} className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] font-medium text-[var(--twin-body)]">
+                  <span className="size-3 shrink-0 rounded-full" style={{ background: m.color }} />
+                  {m.label}
+                </span>
+              ))}
             </div>
           )}
           {/* 收藏星标已下线：收藏粒度改到「房间」，星标搬进左侧树（CampusTree 的 bookmark 能力） */}

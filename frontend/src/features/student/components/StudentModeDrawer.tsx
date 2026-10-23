@@ -1,11 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { ArrowDownToLine, ListChecks, Trash2, X } from "lucide-react";
+import { ArrowDownToLine, ChevronLeft, ChevronRight, ListChecks, Trash2, X } from "lucide-react";
 import type { PendingItem } from "@/features/cage-shelf/pendingBatch";
 import type { CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
 import { SelectCheck } from "@/features/cage-shelf/components/SelectCheck";
 import { CellButton } from "@/features/cage-shelf/components/CellButton";
+import { ItchChip } from "@/features/cage-shelf/components/ItchChip";
 
 /** 状态模式：格子当前的编辑缓存快照（喂给缩略图做实时配色），与 BufferTargetZones 的 EditCacheEntry 同义 */
 type EditCache = { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction> };
@@ -208,23 +210,12 @@ function Zone({
           <div className="truncate text-[11px] font-semibold text-[var(--app-color-text-primary)]" title={zone.title}>{zone.title}</div>
           {zone.subtitle && <div className="truncate text-[10px] text-[var(--app-color-text-tertiary)]" title={zone.subtitle}>{zone.subtitle}</div>}
         </div>
-        {/* 右上角勾选框（如「瘙痒」）：pointerdown 必须停住，否则点它会被 dnd-kit 当成开始拖拽 */}
+        {/* 右上角瘙痒子值：染色块（点亮 = 本档 + 瘙痒），不用勾选框 */}
         {zone.extraCheck && (
-          <label
-            onPointerDown={(e) => e.stopPropagation()}
-            className="flex shrink-0 cursor-pointer items-center gap-0.5 text-[10px] font-semibold"
-            style={{ color: zone.extraCheck.checked ? color : "var(--app-color-text-tertiary)" }}
-            title={`勾上 = 「${zone.title}」+ ${zone.extraCheck.label}`}
-          >
-            <input
-              type="checkbox"
-              className="h-3 w-3"
-              style={{ accentColor: color }}
-              checked={zone.extraCheck.checked}
-              onChange={(e) => zone.extraCheck!.onChange(e.target.checked)}
-            />
-            {zone.extraCheck.label}
-          </label>
+          <ItchChip
+            on={zone.extraCheck.checked}
+            onToggle={() => zone.extraCheck!.onChange(!zone.extraCheck!.checked)}
+          />
         )}
         <span className="shrink-0 rounded-full bg-[var(--student-canvas-soft)] px-1.5 text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">
           {items.length}
@@ -270,7 +261,7 @@ function Zone({
  * 与后台 CageModeDrawer 同构但另写一套皮：学生端令牌是 --app-color-*，不共用后台组件。
  */
 export default function StudentModeDrawer({
-  title, items, selected, zones, itemsByZone, onToggle, onToggleAll, onRemove, onAssignSelected, onUnassignAll, onDrop, onSubmit, submitting, onClose, targetNoun, needsTarget, targetKeyOf, zonesHeader, cellOf, shelfNameOf, cacheOf, onOpen, zonesMain = false,
+  title, items, selected, zones, itemsByZone, onToggle, onToggleAll, onRemove, onAssignSelected, onUnassignAll, onDrop, onSubmit, submitting, targetNoun, needsTarget, targetKeyOf, zonesHeader, cellOf, shelfNameOf, cacheOf, onOpen, zonesMain = false,
 }: {
   title: string;
   /** 左栏缓冲条目（划分模式下 = 未归属的；申请预约 = 全部） */
@@ -286,7 +277,6 @@ export default function StudentModeDrawer({
   onDrop: (cageIds: string[], zoneKey: string | null, fromZone?: string | null) => void;
   onSubmit: () => void;
   submitting: boolean;
-  onClose: () => void;
   /** 拦截提示用（划分模式传「人员」；申请预约不传 = 不校验） */
   needsTarget?: boolean;
   targetKeyOf?: (it: PendingItem) => string | undefined;
@@ -307,6 +297,14 @@ export default function StudentModeDrawer({
   zonesMain?: boolean;
 }) {
   const [localErr, setLocalErr] = useState("");
+  /**
+   * 收起态：与管理端 CageOpDrawer 同语义 —— 「关闭」不是卸载抽屉，而是滑出屏幕、
+   * 在右边缘留一枚竖排把手，点一下原样回来（待提交内容一条不丢）。
+   */
+  const [collapsed, setCollapsed] = useState(false);
+  const width = zonesMain ? 618 : 420;
+  /** 收起后只留把手露在外面，横向偏移 = 抽屉宽度 - 把手宽度 */
+  const collapsedX = width - 28;
   const [dragItem, setDragItem] = useState<PendingItem | null>(null);
   /** 预览节点：条目自己在 data 里塞好，浮层直接渲染，跟着鼠标走 */
   const [dragPreview, setDragPreview] = useState<ReactNode>(null);
@@ -423,12 +421,28 @@ export default function StudentModeDrawer({
   return createPortal(
     /* bottom 让开底部的模式悬浮岛（岛是 bottom:16 锚定、z-index 只有 3，抽屉一盖上去那颗按钮就点不到了，
        而抽屉一开又必须能切模式）。84 = 岛高 ~56 + 下边距 16 + 余量 */
-    <div style={{ position: "fixed", top: 72, right: 0, bottom: 84, zIndex: 60 }} className={`flex flex-col rounded-l-student-lg border border-r-0 border-[var(--student-hairline)] bg-[var(--student-canvas)] shadow-2xl ${zonesMain ? "w-[618px]" : "w-[420px]"}`}>
+    <motion.div
+      initial={{ x: width + 20, opacity: 0 }}
+      animate={{ x: collapsed ? collapsedX : 0, opacity: 1 }}
+      transition={{ type: "spring", stiffness: 320, damping: 34 }}
+      style={{ position: "fixed", top: 72, right: 0, bottom: 84, zIndex: 60, width }}
+      className="flex flex-col rounded-l-student-lg border border-r-0 border-[var(--student-hairline)] bg-[var(--student-canvas)] shadow-2xl"
+    >
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        title={collapsed ? `展开${title}` : "收起"}
+        className="absolute -left-6 top-6 flex h-16 w-6 flex-col items-center justify-center gap-0.5 rounded-l-student-md border border-r-0 border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"
+      >
+        {collapsed ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        <span className="text-[9px] leading-none [writing-mode:vertical-rl]">{title}</span>
+      </button>
+      {!collapsed && <>
       <header className="flex shrink-0 items-center gap-2 border-b border-[var(--student-hairline)] px-4 py-3">
         <span className="text-[12px] font-semibold text-[var(--app-color-text-primary)]">{title}</span>
         <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{totalCount} 个笼位</span>
-        <button type="button" onClick={onClose} className="ml-auto text-[var(--app-color-text-tertiary)]" title="关闭">
-          <X className="h-4 w-4" />
+        <button type="button" onClick={() => setCollapsed(true)} className="ml-auto text-[var(--app-color-text-tertiary)]" title="收起抽屉">
+          <ChevronRight className="h-4 w-4" />
         </button>
       </header>
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
@@ -462,7 +476,8 @@ export default function StudentModeDrawer({
           {submitting ? "提交中…" : `提交（${totalCount}）`}
         </button>
       </footer>
-    </div>,
+      </>}
+    </motion.div>,
     document.body,
   );
 }

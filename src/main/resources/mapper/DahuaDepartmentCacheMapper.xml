@@ -40,6 +40,20 @@
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 
+    <select id="listAll" resultType="com.example.demo.modules.dahua.entity.DahuaDepartmentCache">
+        SELECT id,
+               parent_id AS parentId,
+               name,
+               memo,
+               sort,
+               parent_ids AS parentIds,
+               department_sn AS departmentSn,
+               domain_id AS domainId,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM dahua_department_cache
+        ORDER BY sort ASC, id ASC
+    </select>
+
     <select id="selectNameById" resultType="string">
         SELECT name FROM dahua_department_cache WHERE id = #{id} LIMIT 1
     </select>

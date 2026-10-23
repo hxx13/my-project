@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { displayFloorAndName } from "@/utils/dahuaChannelName";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
@@ -339,7 +340,10 @@ export default function AdminVideoWallPage() {
     const list = channelsQ.data ?? [];
     const kw = keyword.trim().toLowerCase();
     if (!kw) return list;
-    return list.filter((c) => (c.channelName ?? "").toLowerCase().includes(kw));
+    return list.filter((c) => {
+      const name = (c.channelName ?? "").toLowerCase();
+      return name.includes(kw) || displayFloorAndName(c.channelName ?? "").toLowerCase().includes(kw);
+    });
   }, [channelsQ.data, keyword]);
 
   /** 扁平节点拼成树（Tree 组件按 children 递归），按 sortOrder 排 */
@@ -2019,7 +2023,7 @@ export default function AdminVideoWallPage() {
                                   sp <= 4 ? "text-base" : sp <= 9 ? "text-sm" : "text-[11px]"
                                 )}
                               >
-                                {ch.channelName}
+                                {displayFloorAndName(ch.channelName)}
                               </span>
                               <span className="absolute right-0.5 top-0.5 flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
                                 {ch.linkUrl ? (
@@ -2082,3 +2086,4 @@ export default function AdminVideoWallPage() {
     </div>
   );
 }
+

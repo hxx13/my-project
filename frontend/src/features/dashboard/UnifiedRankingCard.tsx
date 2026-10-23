@@ -5,6 +5,7 @@ import { fetchGroupRanking, fetchAnimalOrderRanking, fetchRankingPollConfig, ens
 import { Trophy } from "lucide-react";
 import { useDashboardNightVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+import { useHidePuxi } from "@/features/dashboard/useHidePuxi";
 
 type Region = "TOTAL" | "PUDONG" | "PUXI";
 type TabKey = "activity" | "animal";
@@ -56,6 +57,11 @@ const podiumWidths = [72, 82, 66];
 
 export function UnifiedRankingCard() {
   const night = useDashboardNightVisual();
+  const hidePuxi = useHidePuxi();
+  const visibleRegions = useMemo(
+    () => (hidePuxi ? REGIONS.filter((r) => r !== "PUXI") : REGIONS),
+    [hidePuxi],
+  );
   const [activeTab, setActiveTab] = useState<TabKey>("activity");
   const [region, setRegion] = useState<Region>("TOTAL");
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
@@ -218,15 +224,20 @@ export function UnifiedRankingCard() {
 
   const advanceCycle = useCallback(() => {
     const cur = regionRef.current;
-    const idx = REGIONS.indexOf(cur);
-    if (idx < REGIONS.length - 1) {
-      setRegion(REGIONS[idx + 1]);
+    const idx = visibleRegions.indexOf(cur);
+    if (idx < visibleRegions.length - 1) {
+      setRegion(visibleRegions[idx + 1]);
     } else {
       // All regions exhausted — switch tab and reset region
       setRegion("TOTAL");
       setActiveTab((prev) => (prev === "activity" ? "animal" : "activity"));
     }
-  }, []);
+  }, [visibleRegions]);
+
+  // 开关打开时若正停在浦西，立即回落到「全部」
+  useEffect(() => {
+    if (hidePuxi && region === "PUXI") setRegion("TOTAL");
+  }, [hidePuxi, region]);
 
   // 切换区域/标签时回到列表顶部（标记为程序滚动，不触发手动暂停）
   useEffect(() => {
@@ -431,7 +442,7 @@ export function UnifiedRankingCard() {
 
       {/* Region filter */}
       <div className="flex gap-2 items-center shrink-0">
-        {REGIONS.map((reg) => (
+        {visibleRegions.map((reg) => (
           <button
             key={reg}
             type="button"

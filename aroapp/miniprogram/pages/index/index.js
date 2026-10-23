@@ -166,7 +166,7 @@ Page({
       { id: 'records', title: '出入记录', iconSrc: ICON_RECORDS },
       { id: 'notices', title: '通知', iconSrc: ICON_NOTIFY, badge: '' },
       { id: 'animalOrder', title: '动物订购', iconSrc: ICON_ANIMAL_ORDER },
-      { id: 'violations', title: '违规记录', iconSrc: ICON_VIOLATION },
+      { id: 'training', title: '培训报名', iconSrc: ICON_VIOLATION },
     ],
 
     /** H5 同款「公告通知」列表：通用公告 / 我的提醒 两段 */
@@ -964,8 +964,8 @@ Page({
       }
     } else if (id === 'animalOrder') {
       wx.navigateTo({ url: '/package-feature/pages/animalOrder/index' });
-    } else if (id === 'violations') {
-      wx.navigateTo({ url: '/package-student/pages/studentViolations/index' });
+    } else if (id === 'training') {
+      wx.navigateTo({ url: '/package-student/pages/studentTraining/index' });
     }
   },
 });

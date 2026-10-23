@@ -26,6 +26,13 @@ import type { CageShelfTreeNode, BookingRoom } from "@/api/domains/cageShelf.api
 import { LockBadge, type ScopeRef, type SyncLockScope } from "./SyncLockContext";
 import { roomIdOf, shelveIdOf, subtreeHasBookmarked, visibleShelfChildren, type RoomBookmarkOpts } from "./campusTreeBookmarkFilter";
 
+/** 状态点固定顺序：需分笼 → 健康异常 → 动物转移 → 特殊饲养 → 合笼（与架头图例同一套） */
+const STATUS_DOT_ORDER = ["NEED_DIVIDE", "HEALTH_ABNORMAL", "ANIMAL_TRANSFER", "SPECIAL_FEEDING", "COHABITATION"];
+const sortDots = (codes: Iterable<string>) => [...codes].sort((a, b) => {
+  const ai = STATUS_DOT_ORDER.indexOf(a), bi = STATUS_DOT_ORDER.indexOf(b);
+  return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+});
+
 /** 由树节点 raw 拼同步保护锁链（自下而上：本层 → 上级 → 顶层），空 ID 段跳过。 */
 function lockChain(raw: any, depth: SyncLockScope): ScopeRef[] {
   const chain: ScopeRef[] = [];
@@ -136,13 +143,20 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
     [roomNodes, bookmark?.bookmarkedRooms],
   );
 
-  /** 顶部快捷块的房间行：与主列表同一套 renderNode（样式、展开、收藏星完全一致） */
-  const quickRow = (n: TreeNode) => renderNode(n, exp, "", tg, onOpenRoom, viewMode, onOpenShelf,
+  /**
+   * 顶部快捷块的房间行：与主列表同一套 renderNode（样式、展开、收藏星完全一致）。
+   *
+   * 展开状态**必须与主列表分命名空间**：快捷块与主列表会同时出现同一个房间，
+   * 共用 key 时点主列表里那行会把头顶快捷块里的同一间一起展开，页面高度突然变化 →
+   * 表现为「点下方列表时整个列表乱跳」。每块各给一个前缀，互不影响。
+   */
+  const quickRow = (n: TreeNode, prefix: string) => renderNode(
+    { ...n, key: prefix + n.key }, exp, "", tg, onOpenRoom, viewMode, onOpenShelf,
     alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark);
 
   /** 搜索/收藏视图下不画快捷块（搜索结果与收藏视图本身已经足够聚焦，重复反而乱） */
   const showQuick = !searching && !bookmark?.onlyBookmarked;
-  const quickSection = (title: string, nodes: TreeNode[], emptyHint: string) => (
+  const quickSection = (title: string, nodes: TreeNode[], emptyHint: string, prefix: string) => (
     <div className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5">
       <div className="flex items-center justify-between px-1 pb-1">
         <span className="text-[10px] font-semibold text-[var(--twin-ink)]">{title}</span>
@@ -151,16 +165,16 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
       {nodes.length === 0 ? (
         <div className="px-1 py-1.5 text-[10px] leading-relaxed text-[var(--twin-mute)]">{emptyHint}</div>
       ) : (
-        <div className="space-y-0.5">{nodes.map((n) => quickRow(n))}</div>
+        <div className="space-y-0.5">{nodes.map((n) => quickRow(n, prefix))}</div>
       )}
     </div>
   );
 
   return <div className="text-[11px] space-y-1.5">
     {showQuick && myRoomIds !== undefined
-      && quickSection("我的区域", myRooms, "暂无本课题组房间")}
+      && quickSection("我的区域", myRooms, "暂无本课题组房间", "q:mine:")}
     {showQuick && bookmark?.bookmarkedRooms !== undefined
-      && quickSection("收藏区域", favRooms, "暂无收藏房间，点房间名后的 ☆ 收藏")}
+      && quickSection("收藏区域", favRooms, "暂无收藏房间，点房间名后的 ☆ 收藏", "q:fav:")}
     {tree.map(c => {
       if (searching && !subtreeMatches(c, q)) return null;
       // 收藏视图：整支都没有收藏项（房间或笼架）的校区不画
@@ -254,11 +268,11 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
           title={on ? "取消收藏该笼架" : "收藏该笼架（在「收藏」里可直达）"}
           onClick={(e) => { e.stopPropagation(); flip(); }}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); flip(); } }}
-          className="shrink-0 cursor-pointer rounded p-0.5 outline-none transition hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]">
+          className="shrink-0 cursor-pointer rounded outline-none transition hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]">
           <Star className={`h-2.5 w-2.5 ${on ? "fill-[var(--twin-link-deep)] text-[var(--twin-link-deep)]" : "text-[var(--twin-mute)]"}`} />
         </span>;
       })()}<LockBadge chain={lockChain(r, "SHELF")} label={n.label} />
-      {shelfStatuses && shelfStatuses.size > 0 && <span className="ml-auto shrink-0 flex items-center gap-0.5">{[...shelfStatuses].map(sc => <span key={sc} className={`inline-block w-2 h-2 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>}
+      {shelfStatuses && shelfStatuses.size > 0 && <span className="ml-auto shrink-0 flex items-center gap-0.5">{sortDots(shelfStatuses).map(sc => <span key={sc} className={`inline-block w-2 h-2 shrink-0 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>}
       </div>
       {hideProgress ? null : (
         <div className="flex h-1 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)] mt-1">
@@ -314,15 +328,14 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
               title={on ? "取消收藏该房间" : "收藏该房间（在「收藏」里只看这些）"}
               onClick={(e) => { e.stopPropagation(); flip(); }}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); flip(); } }}
-              className="shrink-0 cursor-pointer rounded p-0.5 outline-none transition hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]">
+              className="shrink-0 cursor-pointer rounded outline-none transition hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]">
               <Star className={`h-3 w-3 ${on ? "fill-[var(--twin-link-deep)] text-[var(--twin-link-deep)]" : "text-[var(--twin-mute)]"}`} />
             </span>;
           })()}
           <span className="flex-1" />
           <LockBadge chain={lockChain(n.raw, "ROOM")} label={n.label} />
           {isBooking && bkRoom ? <span className="text-[9px] text-[var(--twin-mute)] shrink-0">约{bkBooked} 用{bkUsed}</span>
-          : <>{(() => { const rs = alertStatusesByRoom?.get(n.key.replace("r:", "")); if (!rs || rs.size === 0) return null; const DOT: Record<string, string> = { NEED_DIVIDE: "bg-amber-500", HEALTH_ABNORMAL: "bg-purple-500", ANIMAL_TRANSFER: "bg-cyan-500", SPECIAL_FEEDING: "bg-red-500", COHABITATION: "bg-emerald-500" }; return <span className="shrink-0 flex items-center gap-0.5 ml-1">{[...rs].map(sc => <span key={sc} className={`inline-block w-2 h-2 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>; })()}
-          <span className="text-[10px] text-[var(--twin-mute)]">{n.children.length}架</span></>}
+          : (() => { const rs = alertStatusesByRoom?.get(n.key.replace("r:", "")); if (!rs || rs.size === 0) return null; const DOT: Record<string, string> = { NEED_DIVIDE: "bg-amber-500", HEALTH_ABNORMAL: "bg-purple-500", ANIMAL_TRANSFER: "bg-cyan-500", SPECIAL_FEEDING: "bg-red-500", COHABITATION: "bg-emerald-500" }; return <span className="shrink-0 flex items-center gap-0.5 ml-1">{sortDots(rs).map(sc => <span key={sc} className={`inline-block w-2 h-2 shrink-0 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>; })()}
         </div>
         {isBooking ? <div className="flex gap-1 mt-1.5">
           <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)]">

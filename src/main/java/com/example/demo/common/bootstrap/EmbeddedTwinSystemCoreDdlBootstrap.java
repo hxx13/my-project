@@ -95,6 +95,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
 
         // --- 核心表 ---
         total++; if (runScript("db/bootstrap-system-config.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-frontend-runtime-hide-puxi.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-login-branding-invite-chat.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-admin-file-template.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-admin-file-template-purpose.sql", ctx)) success++;
@@ -179,6 +180,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-dahua-video-category.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-dahua-video-category-col.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-dahua-video-link.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-dahua-door-channel-group.sql", ctx)) success++;
         // 电视墙参观模式：预设播放队列（顺序由人排，落库各端共用）
         total++; if (runScript("db/bootstrap-dahua-tvwall-tour.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-door-swipe-rule.sql", ctx)) success++;

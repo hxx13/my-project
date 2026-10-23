@@ -1,14 +1,5 @@
-import axios from "axios";
-import { publicHttp } from "@/api/core/publicHttp";
 import { authHttp } from "@/api/core/authHttp";
 import { unwrapApiResponse } from "@/api/core/http";
-import type {
-  HeatmapCell,
-  RoomUsageItem,
-  StudentActivityResult,
-  StudentActivitySummary,
-} from "@/api/domains/analytics.api";
-import type { ScanDelayRequestResult } from "@/api/domains/scanDelay.api";
 import type { ScanDelayOptionSummary } from "@/api/types/scanner";
 
 // ======================== 类型 ========================
@@ -84,43 +75,11 @@ export interface MobileTokenInfo {
 export interface MobileTokenGenerateResult {
   token: string;
   userId: string;
-  expiresAt: string;
-  durationDays: number;
+  expiresAt?: string;
 }
 
 // ======================== 公开 API ========================
 
-/** 直链失效业务码（同后端 ErrorCodeConstants）：1010001 无效 / 1010002 过期 / 1010003 多设备 */
-const TOKEN_DEAD_CODES = new Set([1010001, 1010002, 1010003]);
-
-class MobileTokenDeadError extends Error {
-  code: number;
-  constructor(code: number, message: string) {
-    super(message);
-    this.name = "MobileTokenDeadError";
-    this.code = code;
-  }
-}
-
-/** 直链已失效（过期 / 口令无效 / 多设备），调用方应引导去正式登录页 */
-export function isMobileTokenDead(e: unknown): e is MobileTokenDeadError {
-  return e instanceof MobileTokenDeadError && TOKEN_DEAD_CODES.has(e.code);
-}
-
-/** 通过 token 获取学生中心数据（公开接口，无需登录） */
-export async function fetchMobileCenter(token: string): Promise<MobileCenterData> {
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: MobileCenterData;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}`);
-
-  if (!resp.data.success) {
-    throw new MobileTokenDeadError(resp.data.code, resp.data.message || "加载失败");
-  }
-  return resp.data.data;
-}
 
 // ======================== 房间页（与小程序 wechat-overview + scan/analyze 同源） ========================
 
@@ -194,26 +153,6 @@ export interface MobileRoomDashboardData {
   userId?: string;
 }
 
-/** 房间 Tab：wechat-overview + scan/analyze（与小程序房间页同源） */
-export async function fetchMobileRoomDashboard(token: string): Promise<MobileRoomDashboardData> {
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: MobileRoomDashboardData;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}/room-dashboard`);
-
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载失败");
-  }
-  const data = resp.data.data;
-  return {
-    overview: Array.isArray(data.overview) ? data.overview : [],
-    analyze: data.analyze ?? {},
-    userId: data.userId,
-  };
-}
-
 // ======================== 房间 API（分组列表，保留兼容） ========================
 
 export interface MobileRoomItem {
@@ -243,21 +182,6 @@ export interface MobileCampusGroup {
 export interface MobileRoomsData {
   campusGroups: MobileCampusGroup[];
   totalCount: number;
-}
-
-/** 通过 token 获取学生房间列表（按校区/楼层分组，公开接口） */
-export async function fetchMobileRooms(token: string, mode: "all" | "mine" = "all"): Promise<MobileRoomsData> {
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: MobileRoomsData;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}/rooms?mode=${mode}`);
-
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载失败");
-  }
-  return resp.data.data;
 }
 
 // ======================== 公告/违规提醒 API ========================
@@ -318,21 +242,6 @@ export interface MobileAlertsData {
   announcementsUnread?: boolean;
 }
 
-/** 通过 token 获取公告与违规提醒（扫码弹窗公告源） */
-export async function fetchMobileAlerts(token: string): Promise<MobileAlertsData> {
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: MobileAlertsData;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}/alerts`);
-
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载失败");
-  }
-  return resp.data.data;
-}
-
 export type MobileNoticeAutoSuppressPayload = {
   noticeKind: "announcement" | "violation" | "unbound";
   recordId: number;
@@ -344,24 +253,6 @@ export type MobileNoticeAutoSuppressResult = {
   recordId: number;
   autoOpenSuppressed: boolean;
 };
-
-/** 手机 H5：持久化「下次不再自动弹出」（与 /scan/notice-auto-suppress 同源） */
-export async function suppressMobileNoticeAutoOpen(
-  token: string,
-  payload: MobileNoticeAutoSuppressPayload,
-): Promise<MobileNoticeAutoSuppressResult> {
-  const resp = await publicHttp.post<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: MobileNoticeAutoSuppressResult;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}/notice-auto-suppress`, payload);
-
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "保存失败");
-  }
-  return resp.data.data;
-}
 
 // ======================== 出入记录 API ========================
 
@@ -378,14 +269,6 @@ export interface MobileAccessRecordsData {
   total: number;
   page: number;
   size: number;
-}
-
-export async function fetchMobileAccessRecords(token: string, page = 1, size = 20): Promise<MobileAccessRecordsData> {
-  const resp = await publicHttp.get<{ code: number; success: boolean; message?: string; data: MobileAccessRecordsData }>(
-    `/public/mobile-center/${encodeURIComponent(token)}/access-records?page=${page}&size=${size}`
-  );
-  if (!resp.data.success) throw new Error(resp.data.message || "加载失败");
-  return resp.data.data;
 }
 
 // ======================== 申领 API ========================
@@ -420,49 +303,6 @@ export interface MobileMaterialsData {
   myRequests: any[];
 }
 
-export async function fetchMobileMaterials(token: string): Promise<MobileMaterialsData> {
-  const resp = await publicHttp.get<{ code: number; success: boolean; message?: string; data: MobileMaterialsData }>(
-    `/public/mobile-center/${encodeURIComponent(token)}/materials`
-  );
-  if (!resp.data.success) throw new Error(resp.data.message || "加载失败");
-  return resp.data.data;
-}
-
-function normalizeMaterialRequestLines(
-  lines: { itemId: number; qty: number; specSnapshot?: string | Record<string, string> }[],
-) {
-  return lines.map((line) => ({
-    itemId: line.itemId,
-    qty: line.qty,
-    specSnapshot: line.specSnapshot
-      ? typeof line.specSnapshot === "string"
-        ? line.specSnapshot
-        : JSON.stringify(line.specSnapshot)
-      : undefined,
-  }));
-}
-
-/** HTML5 学生中心：用手机 token 提交申领（非 JWT，后端按 token 解析学生身份） */
-export async function submitMobileMaterialRequest(
-  token: string,
-  lines: { itemId: number; qty: number; specSnapshot?: string }[],
-  applicantGroup?: string,
-  scheduledPickupTime?: string | null,
-) {
-  const resp = await publicHttp.post<{
-    code: number;
-    success: boolean;
-    message?: string;
-    data: unknown;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}/material/requests`, {
-    lines: normalizeMaterialRequestLines(lines),
-    applicantGroup,
-    scheduledPickupTime,
-  });
-  if (!resp.data.success) throw new Error(resp.data.message || "提交失败");
-  return resp.data.data;
-}
-
 // ======================== 笼架 API ========================
 
 export interface MobileCageShelfSummary {
@@ -483,26 +323,6 @@ export interface MobileCageShelvesAllData {
   scannedAt?: string;
 }
 
-/** 课题组全部笼架列表（公开 token 接口） */
-export async function fetchMobileCageShelvesAll(token: string): Promise<MobileCageShelvesAllData> {
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: MobileCageShelvesAllData;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}/cage-shelves/all`);
-
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载笼架列表失败");
-  }
-  const data = resp.data.data;
-  return {
-    shelves: Array.isArray(data?.shelves) ? data.shelves : [],
-    totalCount: data?.totalCount ?? 0,
-    scannedAt: data?.scannedAt,
-  };
-}
-
 export interface MobileCageCellAnnotation {
   shelveId?: string;
   positionX?: number;
@@ -514,24 +334,6 @@ export interface MobileCageCellAnnotation {
   updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;
-}
-
-/** 特殊状态总览（公开 token 接口） */
-export async function fetchMobileSpecialStatusOverview(
-  token: string,
-): Promise<import("@/api/domains/cageShelf.api").SpecialStatusOverview> {
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: import("@/api/domains/cageShelf.api").SpecialStatusOverview;
-  }>(
-    `/public/mobile-center/${encodeURIComponent(token)}/cage-shelves/special-status-overview`,
-  );
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载特殊状态失败");
-  }
-  return resp.data.data;
 }
 
 // ======================== 违规记录 API ========================
@@ -556,144 +358,9 @@ export interface MobileViolationsData {
   size: number;
 }
 
-/** 通过 token 获取违规记录（公开接口） */
-export async function fetchMobileViolations(
-  token: string,
-  page = 1,
-  size = 20,
-): Promise<MobileViolationsData> {
-  const params = new URLSearchParams({ page: String(page), size: String(size) });
+// ======================== 免登录码（需登录） ========================
 
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: MobileViolationsData;
-  }>(
-    `/public/mobile-center/${encodeURIComponent(token)}/violations?${params.toString()}`,
-  );
-
-  if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载失败");
-  }
-  return resp.data.data;
-}
-
-// ======================== 课题组活跃度 API ========================
-
-function mobileGroupActivityBase(token: string) {
-  return `/public/mobile-center/${encodeURIComponent(token)}/group-activity`;
-}
-
-export async function fetchMobileGroupActivitySummary(
-  token: string,
-  params: { groupName: string; startTime: string; endTime: string; campus?: string },
-): Promise<StudentActivitySummary> {
-  const qs = new URLSearchParams({
-    groupName: params.groupName,
-    startTime: params.startTime,
-    endTime: params.endTime,
-    campus: params.campus ?? "all",
-  });
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: StudentActivitySummary;
-  }>(`${mobileGroupActivityBase(token)}/summary?${qs.toString()}`);
-  if (!resp.data.success) throw new Error(resp.data.message || "加载失败");
-  return resp.data.data;
-}
-
-export async function fetchMobileGroupActivityMembers(
-  token: string,
-  params: {
-    groupName: string;
-    startTime: string;
-    endTime: string;
-    sortBy?: string;
-    order?: string;
-    page?: number;
-    size?: number;
-  },
-): Promise<StudentActivityResult> {
-  const qs = new URLSearchParams({
-    groupName: params.groupName,
-    startTime: params.startTime,
-    endTime: params.endTime,
-    sortBy: params.sortBy ?? "entries",
-    order: params.order ?? "desc",
-    page: String(params.page ?? 1),
-    size: String(params.size ?? 10),
-  });
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: StudentActivityResult;
-  }>(`${mobileGroupActivityBase(token)}/members?${qs.toString()}`);
-  if (!resp.data.success) throw new Error(resp.data.message || "加载失败");
-  return resp.data.data;
-}
-
-export async function fetchMobileGroupActivityHeatmap(
-  token: string,
-  params: { groupName: string; startTime: string; endTime: string },
-): Promise<HeatmapCell[]> {
-  const qs = new URLSearchParams({
-    groupName: params.groupName,
-    startTime: params.startTime,
-    endTime: params.endTime,
-  });
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: HeatmapCell[];
-  }>(`${mobileGroupActivityBase(token)}/heatmap?${qs.toString()}`);
-  if (!resp.data.success) throw new Error(resp.data.message || "加载失败");
-  return resp.data.data ?? [];
-}
-
-export async function fetchMobileGroupActivityRoomUsage(
-  token: string,
-  params: { groupName: string; startTime: string; endTime: string },
-): Promise<RoomUsageItem[]> {
-  const qs = new URLSearchParams({
-    groupName: params.groupName,
-    startTime: params.startTime,
-    endTime: params.endTime,
-  });
-  const resp = await publicHttp.get<{
-    code: number;
-    success: boolean;
-    message: string;
-    data: RoomUsageItem[];
-  }>(`${mobileGroupActivityBase(token)}/room-usage?${qs.toString()}`);
-  if (!resp.data.success) throw new Error(resp.data.message || "加载失败");
-  return resp.data.data ?? [];
-}
-
-// ======================== Token-based 写操作（用 token 替代登录态） ========================
-
-/** 通过 bearer token 提交需求建议 */
-export async function createMaterialDemandWithToken(
-  bearerToken: string,
-  suggestion: string,
-): Promise<void> {
-  const resp = await axios.post<{ code: number; success: boolean; message: string }>(
-    "/api/material/demands",
-    { suggestion },
-    { headers: { Authorization: `Bearer ${bearerToken}` } },
-  );
-  if (!resp.data?.success) {
-    throw new Error(resp.data?.message || "提交失败");
-  }
-}
-
-// ======================== 管理 API（需登录） ========================
-
-/** 获取学生当前活跃 token 信息 */
+/** 获取账号当前活跃免登录码 */
 export async function fetchMobileTokenInfo(userId: string): Promise<MobileTokenInfo> {
   const resp = await authHttp.get<{
     code: number;
@@ -703,41 +370,13 @@ export async function fetchMobileTokenInfo(userId: string): Promise<MobileTokenI
   return unwrapApiResponse(resp.data as any);
 }
 
-/** 生成/刷新 token（旧 token 全部失效）；任意已登录账号可用（扫码弹窗二维码） */
-export async function generateMobileToken(
-  userId: string,
-  durationDays = 3,
-): Promise<MobileTokenGenerateResult> {
+/** 生成/轮换免登录码（旧码立即失效）；本人或教职工及以上 */
+export async function generateMobileToken(userId: string): Promise<MobileTokenGenerateResult> {
   const resp = await authHttp.post<{
     code: number;
     success: boolean;
     data: MobileTokenGenerateResult;
-  }>("/scan/student-mobile-token/generate", { userId, durationDays });
+  }>("/scan/student-mobile-token/generate", { userId });
   return unwrapApiResponse(resp.data as any);
 }
 
-// ======================== 标记已读 ========================
-
-/** 将所有反馈类通知标记为已读（公开 token 接口） */
-export async function markMobileAlertsReadAll(token: string): Promise<void> {
-  await publicHttp.post(`/public/mobile-center/${encodeURIComponent(token)}/alerts/read-all`);
-}
-
-/** 打开公告区：标记已看到当前时间（公开 token 接口），之后 announcementsUnread=false */
-export async function markMobileAnnouncementsViewed(token: string): Promise<void> {
-  await publicHttp.post(`/public/mobile-center/${encodeURIComponent(token)}/announcements/viewed`);
-}
-
-// ======================== 延迟免冻结申请（token 模式） ========================
-
-/** 手机 token 提交延迟免冻结申请（与扫码弹窗 submitScanDelayRequest 同源） */
-export async function submitMobileScanDelayRequest(
-  token: string,
-  payload: { subjectUserId: string; roomId: string; optionId: number; reviewerUserId?: string },
-): Promise<ScanDelayRequestResult> {
-  const resp = await publicHttp.post<{
-    code: number; success: boolean; message: string; data: ScanDelayRequestResult;
-  }>(`/public/mobile-center/${encodeURIComponent(token)}/scan-delay/request`, payload);
-  if (!resp.data.success || !resp.data.data) throw new Error(resp.data.message || "提交失败");
-  return resp.data.data;
-}
