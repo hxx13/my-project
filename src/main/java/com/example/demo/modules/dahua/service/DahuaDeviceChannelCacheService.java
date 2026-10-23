@@ -71,9 +71,11 @@ public class DahuaDeviceChannelCacheService {
         return stats;
     }
 
-    /** 视频通道（IPC + NVR + 解码器槽位），读本地缓存。 */
+    /** 视频通道（摄像机输入口），读本地缓存。解码器输出口、报警、音频、门禁通道都不算。 */
     public List<DahuaDeviceChannelCache> listVideoChannels() {
-        return mapper.listByDeviceCategory(WALL_CHANNEL_CATEGORIES);
+        return mapper.listByDeviceCategory(WALL_CHANNEL_CATEGORIES).stream()
+                .filter(c -> c.getUnitType() != null && c.getUnitType() == 1)
+                .toList();
     }
 
     public Map<String, Object> list(String keyword, String channelType, String ownerCode, Integer unitType,

@@ -12,7 +12,7 @@
  * 行的拖放只接线（draggable/droppable），落点由页面在 DndScope.onDrop 里解析。
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowRightLeft, Pencil, FolderPlus, Smile, Trash2 } from "lucide-react";
 import type { FileFolderNode } from "@/api/domains/fileFolders.api";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
@@ -52,6 +52,21 @@ export type FileFolderTreeProps = {
   onDelete: (id: number) => void;
   /** 设置文件夹图标；不传则不显示「设置图标」入口（父级接 mutation，本组件不直接调接口） */
   onSetIcon?: (id: number, icon: string) => void;
+  /** 行本身可拖（默认 true；没有 DndScope 的场景传 false） */
+  draggable?: boolean;
+  /** 行可作为落点（默认 true；没有 DndScope 的场景传 false） */
+  droppable?: boolean;
+  /** 自定义「移动文件夹」选择器；不传则用文件模板的 FileFolderTreeSelect */
+  renderMoveSelect?: (props: {
+    value: string;
+    onChange: (path: string, nodeId: number | null) => void;
+    excludeIds: Set<number>;
+    placeholder: string;
+  }) => ReactNode;
+  /** 自定义节点图标；不传则用节点自带的 emoji（没设则 Folder/File） */
+  getIcon?: (node: FileFolderNode) => ReactNode;
+  /** 自定义删除确认文案 */
+  deleteConfirmText?: (node: FileFolderNode) => string;
 };
 
 export function FileFolderTree(props: FileFolderTreeProps) {
@@ -68,6 +83,11 @@ export function FileFolderTree(props: FileFolderTreeProps) {
     onMove,
     onDelete,
     onSetIcon,
+    draggable = true,
+    droppable = true,
+    renderMoveSelect,
+    getIcon,
+    deleteConfirmText,
   } = props;
 
   const [iconTarget, setIconTarget] = useState<FileFolderNode | null>(null);
@@ -81,7 +101,10 @@ export function FileFolderTree(props: FileFolderTreeProps) {
   };
 
   const doDelete = async (node: FileFolderNode) => {
-    const ok = await appConfirm(`确认删除文件夹「${node.name}」？其中有文件或子文件夹时无法删除。`, {
+    const message =
+      deleteConfirmText?.(node) ??
+      `确认删除文件夹「${node.name}」？其中有文件或子文件夹时无法删除。`;
+    const ok = await appConfirm(message, {
       title: "删除文件夹",
       danger: true,
     });
@@ -97,7 +120,9 @@ export function FileFolderTree(props: FileFolderTreeProps) {
         getName={(n) => n.name}
         getChildren={(n) => n.children}
         getCount={(n) => n.totalCount ?? null}
-        getIcon={(n) => (n.icon ? <span className="shrink-0 text-[13px] leading-none">{n.icon}</span> : null)}
+        getIcon={(n) =>
+          getIcon ? getIcon(n) : n.icon ? <span className="shrink-0 text-[13px] leading-none">{n.icon}</span> : null
+        }
         selectedId={selectedId}
         expanded={expanded}
         keyword={keyword}
@@ -108,8 +133,8 @@ export function FileFolderTree(props: FileFolderTreeProps) {
         onCreate={(parentId, name) => (parentId == null ? onCreateRoot(name) : onCreateChild(parentId, name))}
         emptyText="暂无文件夹"
         noMatchText="没有匹配的文件夹"
-        draggable
-        droppable
+        draggable={draggable}
+        droppable={droppable}
         renderMenu={(n, h) => (
           <>
             <DropdownMenuItem onSelect={h.startCreateChild}>
@@ -142,9 +167,12 @@ export function FileFolderTree(props: FileFolderTreeProps) {
           selectPlaceholder: "选择新父文件夹",
           // 候选排除自己 + 自己整棵子树
           excludeIds: (n) => collectDescendantIds(n),
-          renderSelect: (p) => (
-            <FileFolderTreeSelect value={p.value} onChange={p.onChange} excludeIds={p.excludeIds} placeholder={p.placeholder} />
-          ),
+          renderSelect: (p) =>
+            renderMoveSelect ? (
+              renderMoveSelect(p)
+            ) : (
+              <FileFolderTreeSelect value={p.value} onChange={p.onChange} excludeIds={p.excludeIds} placeholder={p.placeholder} />
+            ),
           // 后端不支持移到根：选择器没选到有效节点时确认按钮禁用
           onConfirm: (n, parentId) => {
             if (parentId != null) onMove(n.id, parentId);

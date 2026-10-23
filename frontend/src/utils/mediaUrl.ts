@@ -38,6 +38,9 @@ export function resolveApiMediaUrl(url: string | null | undefined): string | und
   const u = (url != null && String(url).trim()) || "";
   if (!u) return undefined;
 
+  // 微信云开发 fileID 浏览器无法渲染，返回 undefined 让调用方走占位图
+  if (isCloudFileId(u)) return undefined;
+
   if (/^https?:\/\//i.test(u)) {
     try {
       const parsed = new URL(u);

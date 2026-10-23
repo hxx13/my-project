@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { RefreshCw, Copy, QrCode, ExternalLink, X, Loader2, Clock, Check } from "lucide-react";
+import { RefreshCw, Copy, QrCode, ExternalLink, X, Loader2, Check } from "lucide-react";
 import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import { hasMobileHtml5Privilege, MOBILE_HTML5_PRIVILEGE_MIN_ROLE } from "@/features/auth/roleAccess";
@@ -15,10 +15,6 @@ interface Props {
   userName?: string;
   /** 人员授权页角色；管理员及以上享有 HTML5 直达免过滤 */
   role?: string;
-}
-
-function daysRemaining(expiresAt: string): number {
-  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000));
 }
 
 /** 紧凑型 table cell：token 状态指示器 + 点击展开 QR 弹窗 */
@@ -50,15 +46,15 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
   const handleCellClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     // 已有活跃 token → 打开弹窗展示二维码
-    if (hasActive && !expired) {
+    if (hasActive) {
       setPopoverOpen(true);
       return;
     }
-    // 无 token 或已过期 → 直接生成
+    // 无 token → 直接生成
     if (generating) return;
     setGenerating(true);
     try {
-      const gen = await generateMobileToken(userId, 3);
+      const gen = await generateMobileToken(userId);
       setTokenInfo({ hasToken: true, token: gen.token, expiresAt: gen.expiresAt });
       toast.success("已生成");
       // 生成后自动打开弹窗
@@ -73,7 +69,7 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
   const handleCopyUrl = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!tokenInfo?.token) return;
-    const url = `${window.location.origin}/#/m/sc/${tokenInfo.token}`;
+    const url = `${window.location.origin}/#/m/login?code=${tokenInfo.token}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       toast.success("已复制");
@@ -82,12 +78,10 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
   };
 
   const qrUrl = tokenInfo?.token
-    ? `${window.location.origin}/#/m/sc/${tokenInfo.token}`
+    ? `${window.location.origin}/#/m/login?code=${tokenInfo.token}`
     : "";
 
   const hasActive = tokenInfo?.hasToken && tokenInfo?.token;
-  const remaining = tokenInfo?.expiresAt ? daysRemaining(tokenInfo.expiresAt) : 0;
-  const expired = hasActive && remaining <= 0;
 
   // ---- popover ----
   const popover = popoverOpen && createPortal(
@@ -104,7 +98,7 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
           <div className="flex items-center gap-2">
             <QrCode className="size-5 text-[var(--app-color-primary)]" />
             <span className="font-semibold text-sm text-[var(--app-color-text-primary)]">
-              手机端直达
+              免登录二维码
             </span>
           </div>
           <button
@@ -126,7 +120,7 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
           </p>
         )}
 
-        {hasActive && !expired ? (
+        {hasActive ? (
           <>
             {/* QR code */}
             <div className="flex justify-center mb-3">
@@ -144,7 +138,7 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
                 className="flex-1 text-[11px] font-mono text-[var(--app-color-primary)] truncate hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
-                /#/m/sc/{tokenInfo.token!.slice(0, 16)}…
+                /#/m/login?code={tokenInfo.token!.slice(0, 16)}…
               </a>
               <button
                 onClick={handleCopyUrl}
@@ -169,16 +163,10 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
               </a>
             </div>
 
-            {/* expiration */}
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="flex items-center gap-1 text-[var(--app-color-text-tertiary)]">
-                <Clock className="size-3" />
-                有效期至 {tokenInfo.expiresAt!.slice(0, 10)}
-              </span>
-              <span className={`font-medium ${remaining <= 1 ? "text-red-500" : "text-emerald-600"}`}>
-                {remaining <= 0 ? "已过期" : `剩余 ${remaining} 天`}
-              </span>
-            </div>
+            {/* 长期有效 + 安全提示 */}
+            <p className="text-[11px] leading-relaxed text-[var(--app-color-text-tertiary)]">
+              长期有效。扫码免登录；等同登录凭证，请本人保存或拍照留存，请勿转发。遗失可重新生成止损。
+            </p>
 
             {/* regenerate */}
             <button
@@ -197,7 +185,7 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
             <div className="text-center py-6">
               <QrCode className="size-10 mx-auto mb-2 text-[color-mix(in_srgb,var(--app-color-text-tertiary)_30%,transparent)]" />
               <p className="text-xs text-[var(--app-color-text-tertiary)] mb-3">
-                {expired ? "链接已过期" : "暂无直达链接"}
+                暂无免登录码
               </p>
               <button
                 onClick={handleCellClick}
@@ -211,7 +199,7 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
                     生成中…
                   </>
                 ) : (
-                  "生成直达链接"
+                  "生成免登录码"
                 )}
               </button>
             </div>
@@ -240,22 +228,20 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
         className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] transition-all
                    hover:shadow-sm active:scale-95 disabled:opacity-50"
         style={{
-          borderColor: hasActive && !expired
+          borderColor: hasActive
             ? "var(--app-color-feedback-success, #16a34a)"
             : "var(--app-color-border-default, #e5e5e5)",
-          backgroundColor: hasActive && !expired
+          backgroundColor: hasActive
             ? "var(--app-color-feedback-success-soft, #dcfce7)"
             : "var(--app-color-surface-container, #f5f5f5)",
-          color: hasActive && !expired
+          color: hasActive
             ? "var(--app-color-feedback-success, #16a34a)"
             : "var(--app-color-text-tertiary, #8c8c8c)",
         }}
       >
         <QrCode className="size-3" />
-        {hasActive && !expired ? (
-          <span>{remaining}天</span>
-        ) : expired ? (
-          <span>过期</span>
+        {hasActive ? (
+          <span>已生成</span>
         ) : (
           <span>生成</span>
         )}

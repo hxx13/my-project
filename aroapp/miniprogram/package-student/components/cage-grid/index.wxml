@@ -24,8 +24,13 @@
       <view wx:if="{{ item._cageTypeDotColor }}" class="cg-dot" style="background:{{ item._cageTypeDotColor }};">
         <text>{{ item._cageTypeAbbr }}</text>
       </view>
-      <view wx:if="{{ item._sfBadges && item._sfBadges.length }}" class="cg-sf">
-        <text wx:for="{{ item._sfBadges }}" wx:for-item="sf" wx:key="code" class="cg-sf-pill" style="background:{{ item._sfBadgeColor }};">{{ sf.text }}</text>
+      <view wx:if="{{ item._healthBadges.length || (item._sfBadges && item._sfBadges.length) }}" class="cg-badges">
+        <view wx:if="{{ item._healthBadges.length }}" class="cg-badge-col">
+          <text wx:for="{{ item._healthBadges }}" wx:for-item="hb" wx:key="code" class="cg-sf-pill" style="background:{{ item._healthBadgeColor }};">{{ hb.text }}</text>
+        </view>
+        <view wx:if="{{ item._sfBadges && item._sfBadges.length }}" class="cg-badge-col">
+          <text wx:for="{{ item._sfBadges }}" wx:for-item="sf" wx:key="code" class="cg-sf-pill" style="background:{{ item._sfBadgeColor }};">{{ sf.text }}</text>
+        </view>
       </view>
     </block>
     <text wx:if="{{ item.empty }}" class="cg-empty-text">空</text>

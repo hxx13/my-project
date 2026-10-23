@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { loginWeb, WebLoginError, type WebLoginCandidate, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { loginWeb, loginByMobileCode, WebLoginError, type WebLoginCandidate, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
 import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
@@ -23,6 +23,33 @@ export default function MobileLoginPage() {
   useEffect(() => {
     return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); };
   }, []);
+
+  // 扫码免登录：URL 带 code 时直接换票，成功后清理地址栏参数
+  useEffect(() => {
+    const code = (new URLSearchParams(location.search).get("code") || "").trim();
+    if (!code) return;
+    if (authStorage.hasToken()) {
+      navigate("/m/home", { replace: true });
+      return;
+    }
+    let cancelled = false;
+    setSubmitting(true);
+    setError(null);
+    loginByMobileCode(code)
+      .then((data) => {
+        if (cancelled) return;
+        authStorage.setAuth(data.token, data.role, data.userInfo);
+        authStorage.markLoginPortal("mobile");
+        navigate("/m/home", { replace: true });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "链接无效，请重新获取");
+        navigate("/m/login", { replace: true });
+      })
+      .finally(() => { if (!cancelled) setSubmitting(false); });
+    return () => { cancelled = true; };
+  }, [location.search, navigate]);
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotUserId, setForgotUserId] = useState("");
   const [forgotPhone, setForgotPhone] = useState("");

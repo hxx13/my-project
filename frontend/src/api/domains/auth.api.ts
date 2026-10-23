@@ -58,6 +58,15 @@ export interface WebLoginCandidate {
   name: string;
 }
 
+/** 免登录二维码换票：与账号密码登录返回同一种登录态 */
+export async function loginByMobileCode(code: string): Promise<AuthData> {
+  const response = await axios.post<Result<AuthData>>("/api/auth/login/mobile-code", { code });
+  if (!response.data?.success || !response.data?.data?.token) {
+    throw new Error(response.data?.message || "链接无效，请重新获取");
+  }
+  return response.data.data;
+}
+
 export interface WebLoginErrorPayload {
   errorCode?: string;
   candidates?: WebLoginCandidate[];

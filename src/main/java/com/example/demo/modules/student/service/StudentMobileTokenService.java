@@ -16,7 +16,8 @@ public class StudentMobileTokenService {
 
     private static final Logger log = LoggerFactory.getLogger(StudentMobileTokenService.class);
     private static final SecureRandom RNG = new SecureRandom();
-    private static final int DEFAULT_DURATION_DAYS = 3;
+    /** 免登录码长期有效，靠重新生成作废止损 */
+    private static final int LONG_TERM_DAYS = 3650;
 
     private final StudentMobileTokenMapper tokenMapper;
 
@@ -24,12 +25,12 @@ public class StudentMobileTokenService {
         this.tokenMapper = tokenMapper;
     }
 
-    /** 为学生生成新 token（旧的全部失效），返回 token 串 */
-    public String generateToken(String userId, int durationDays) {
+    /** 为账号生成新 token（旧的全部失效），返回 token 串 */
+    public String generateToken(String userId) {
         if (userId == null || userId.isBlank()) {
             throw new TwinBusinessException(ErrorCodeConstants.BAD_REQUEST, "userId 不能为空");
         }
-        int days = durationDays > 0 ? durationDays : DEFAULT_DURATION_DAYS;
+        int days = LONG_TERM_DAYS;
 
         // 1. 旧 token 全部失效
         tokenMapper.deactivateAllByUserId(userId);
@@ -44,10 +45,10 @@ public class StudentMobileTokenService {
     }
 
     /**
-     * 校验 token 并返回 userId（公开接口）。
-     * 首次访问记录 IP，若检测到多 IP 使用则使该用户全部 token 失效。
+     * 校验 token 并返回 userId（公开换票）。
+     * 不对访问网络做限制：手机网络切换频繁，令牌只靠有效期与作废状态约束。
      */
-    public String validateToken(String token, String clientIp) {
+    public String validateToken(String token) {
         if (token == null || token.isBlank()) {
             throw new TwinBusinessException(ErrorCodeConstants.MOBILE_TOKEN_INVALID, "链接无效");
         }
@@ -59,25 +60,6 @@ public class StudentMobileTokenService {
 
         if (record.getExpiresAt() != null && record.getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new TwinBusinessException(ErrorCodeConstants.MOBILE_TOKEN_EXPIRED, "链接已过期");
-        }
-
-        // 反分享：首次访问记录 IP，之后检测 IP 是否变化
-        String storedIp = record.getLastIp();
-        String ip = (clientIp != null && !clientIp.isBlank()) ? clientIp.trim() : null;
-
-        if (ip != null) {
-            if (storedIp == null) {
-                // 首次访问，记录 IP
-                tokenMapper.setLastIp(record.getId(), ip);
-                log.info("Mobile token first access: userId={}, ip={}", record.getUserId(), ip);
-            } else if (!storedIp.equals(ip)) {
-                // 多 IP 检测 → 全部失效
-                log.warn("Multi-IP detected for userId={}: stored={}, current={}. Deactivating all tokens.",
-                        record.getUserId(), storedIp, ip);
-                tokenMapper.deactivateAllByUserId(record.getUserId());
-                throw new TwinBusinessException(ErrorCodeConstants.MOBILE_TOKEN_MULTI_IP,
-                        "检测到多设备使用，链接已失效，请重新生成");
-            }
         }
 
         return record.getUserId();

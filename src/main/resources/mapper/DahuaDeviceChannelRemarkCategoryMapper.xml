@@ -6,6 +6,7 @@
 
     <select id="listAll" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
         SELECT id,
+               parent_id AS parentId,
                name,
                sort_order AS sortOrder,
                DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
@@ -15,6 +16,7 @@
 
     <select id="findById" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
         SELECT id,
+               parent_id AS parentId,
                name,
                sort_order AS sortOrder,
                DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
@@ -22,15 +24,56 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByName" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
+        SELECT id,
+               parent_id AS parentId,
+               name,
+               sort_order AS sortOrder,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        FROM dahua_device_channel_remark_category
+        WHERE name = #{name}
+        LIMIT 1
+    </select>
+
+    <select id="findByParentAndName" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
+        SELECT id,
+               parent_id AS parentId,
+               name,
+               sort_order AS sortOrder,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        FROM dahua_device_channel_remark_category
+        WHERE parent_id &lt;=&gt; #{parentId}
+          AND name = #{name}
+        LIMIT 1
+    </select>
+
+    <select id="listByParent" resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
+        SELECT id,
+               parent_id AS parentId,
+               name,
+               sort_order AS sortOrder,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        FROM dahua_device_channel_remark_category
+        WHERE parent_id &lt;=&gt; #{parentId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
     <insert id="insert" parameterType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO dahua_device_channel_remark_category (name, sort_order)
-        VALUES (#{name}, #{sortOrder})
+        INSERT INTO dahua_device_channel_remark_category (parent_id, name, sort_order)
+        VALUES (#{parentId}, #{name}, #{sortOrder})
     </insert>
 
     <update id="update" parameterType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelRemarkCategory">
         UPDATE dahua_device_channel_remark_category
         SET name = #{name},
+            parent_id = #{parentId},
             sort_order = #{sortOrder}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateSortOrder">
+        UPDATE dahua_device_channel_remark_category
+        SET sort_order = #{sortOrder}
         WHERE id = #{id}
     </update>
 

@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchCageInfoCodelist } from "@/features/cage-shelf/api/cageForm.api";
 import { appConfirm } from "@/lib/appDialog";
 import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
-import { CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues, isVideoMediaUrl } from "../constants";
+import { CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues, isVideoMediaUrl, displayPosition, severityOfValues, itchOfValues, detailCodesOfValues, detailPhotoKey, HEALTH_SEVERITY_DICT, SPECIAL_DETAIL_DICT, HEALTH_ITCH_LABEL } from "../constants";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DEFAULT_COLORS } from "./CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "../api/cageForm.api";
@@ -37,8 +40,10 @@ import toast from "react-hot-toast";
  *
  * ⚠️ 本组件只用于本地数据源。ARO 数据源走 AdminCageShelfPage 内联的 CAGE_BOX_INFO_FIELD_ORDER 渲染。
  */
-export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, opMarkByCageId, canDivide, onBatchEdit, canEditStatusPhotos }: {
+export default function LocalDetailPanel({ cell, shelfName, onClose, onStartOp, onChanged, opMarkByCageId, canDivide, onBatchEdit, canEditStatusPhotos }: {
   cell: CageShelfCell;
+  /** 笼架名（如 201A-1）：坐标要带上是哪个架子的第几格，光「1-1」看不出位置 */
+  shelfName?: string;
   onClose: () => void;
   /** 分笼/转移：由页面进入选位模式（主网格选目标），不传则不显示入口 */
   onStartOp?: (kind: CageOpKind, source: CageOpSource) => void;
@@ -93,14 +98,10 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     const video = isVideoMediaUrl(url);
     return (
       <div key={`${field}:${index}`} className="relative group">
-        <button type="button" onClick={() => setPreviewUrl(url)} className="relative block cursor-pointer transition hover:opacity-80"
-          title={video ? "点击播放视频" : "点击查看大图"}>
+        <button type="button" onClick={() => setActiveUrl(url)} className="relative block cursor-pointer transition hover:opacity-80"
+          title={video ? "在页内播放该视频" : "在页内查看该图"}>
           {video ? (
-            <>
-              <video src={url} muted preload="metadata"
-                className="pointer-events-none h-10 w-10 rounded border border-[var(--twin-hairline)] object-cover" />
-              <span className="absolute inset-0 grid place-items-center rounded bg-black/35 text-[10px] leading-none text-white">▶</span>
-            </>
+            <span className="grid h-10 w-10 place-items-center rounded border border-[var(--twin-hairline)] bg-slate-900 text-[11px] leading-none text-white">▶</span>
           ) : (
             <img src={url} alt="" className="h-10 w-10 object-cover rounded border border-[var(--twin-hairline)]" />
           )}
@@ -136,6 +137,8 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     }
   };
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  /** 状态页内的大图当前选中项：点缩略图换图，点大图再进全屏灯箱 */
+  const [activeUrl, setActiveUrl] = useState<string | null>(null);
   /**
    * 详情页签：概况 / 状态 / 实验记录。
    * 按账号记住上次选择（和小程序同一口径），下次打开同一人的详情直接落在上次的页签。
@@ -215,6 +218,44 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
   // 状态 chips：以表单为真相源，只列已开启的状态（无合笼日期指示）
   const activeActions = actionsFromFormValues(formValues);
   const statusChips = CAGE_BOX_ACTIONS.filter(a => activeActions.has(a.action));
+  /** 状态子值：健康异常（严重程度 + 瘙痒）与特殊饲养明细 —— 状态行里一并展示，别只显示父状态 */
+  const { data: severityOptions = [] } = useQuery({
+    queryKey: ["healthSeverityOptions"],
+    queryFn: async () => (await fetchCageInfoCodelist(HEALTH_SEVERITY_DICT)).items ?? [],
+    staleTime: 10 * 60 * 1000,
+  });
+  const { data: detailOptions = [] } = useQuery({
+    queryKey: ["specialDetailOptions"],
+    queryFn: async () => (await fetchCageInfoCodelist(SPECIAL_DETAIL_DICT)).items ?? [],
+    staleTime: 10 * 60 * 1000,
+  });
+  const severity = severityOfValues(formValues);
+  const itch = itchOfValues(formValues);
+  const severityLabel = severity ? (severityOptions.find((o) => o.itemCode === severity)?.itemLabel || severity) : "";
+  const detailItems = useMemo(
+    () => [...detailCodesOfValues(formValues)].map((code) => ({
+      code,
+      label: detailOptions.find((o) => o.itemCode === code)?.itemLabel || code,
+      photoKey: detailPhotoKey(code),
+    })),
+    [formValues, detailOptions],
+  );
+
+  /** 状态页所有影像（按状态顺序 + 明细 + 兜底 _status），供页内大图切换与计数 */
+  const allStatusUrls = useMemo(() => {
+    const out: string[] = [];
+    for (const a of statusChips) for (const u of (statusPhotos[a.statusField] || [])) out.push(u);
+    for (const d of detailItems) for (const u of (statusPhotos[d.photoKey] || [])) out.push(u);
+    for (const u of (statusPhotos._status || [])) out.push(u);
+    return out;
+  }, [statusChips, statusPhotos, detailItems]);
+  const shownUrl = activeUrl && allStatusUrls.includes(activeUrl) ? activeUrl : (allStatusUrls[0] ?? null);
+  /** 大图左右切换（图片/视频都按同一个列表切，循环） */
+  const shownIdx = shownUrl ? allStatusUrls.indexOf(shownUrl) : -1;
+  const stepMedia = (dir: number) => {
+    if (allStatusUrls.length < 2 || shownIdx < 0) return;
+    setActiveUrl(allStatusUrls[(shownIdx + dir + allStatusUrls.length) % allStatusUrls.length]);
+  };
 
   if (!detail) return <div className="text-xs text-[var(--twin-mute)] py-8 text-center">无本地详情数据（请先同步）</div>;
 
@@ -228,7 +269,7 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
               return <span key={a.action} className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}` }}>{a.label}</span>;
             })
           : typeInfo && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: typeInfo.bg, color: typeInfo.border, border: `1px solid ${typeInfo.border}` }}>{typeInfo.label}</span>}
-        <span className="text-sm font-bold text-[var(--twin-ink)]">{cell.position}</span>
+        <span className="text-sm font-bold text-[var(--twin-ink)]">{shelfName ? `${shelfName} ` : ""}{displayPosition(cell.position)}</span>
         {cageBoxCode && <span className="text-[10px] font-mono text-[var(--twin-mute)]">盒:{cageBoxCode}</span>}
         {cell.occupantName && <span className="text-[10px] text-[var(--twin-mute)]">所属:<span className="text-[var(--twin-ink)] font-semibold">{cell.occupantName}</span></span>}
       </div>
@@ -306,12 +347,51 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}
     {detailTab === "status" && ((statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) ? (<div className="space-y-2">
+      {/* 页内大图：优先完整显示（contain），不裁不铺满；点一下进全屏灯箱 */}
+      {shownUrl && (
+        <div className="relative rounded-twin-sm border border-[var(--twin-hairline)] bg-black/90 p-1">
+          <button type="button" onClick={() => setPreviewUrl(shownUrl)} title="点击查看全屏"
+            className="flex h-[38vh] max-h-[340px] w-full items-center justify-center">
+            {isVideoMediaUrl(shownUrl) ? (
+              <video key={shownUrl} src={shownUrl} controls playsInline className="max-h-full max-w-full" />
+            ) : (
+              <img src={shownUrl} alt="" className="max-h-full max-w-full object-contain" />
+            )}
+          </button>
+          {allStatusUrls.length > 1 && (
+            <>
+              <button type="button" aria-label="上一张" onClick={() => stepMedia(-1)}
+                className="absolute left-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white transition hover:bg-black/65">
+                <ChevronLeft className="size-4" />
+              </button>
+              <button type="button" aria-label="下一张" onClick={() => stepMedia(1)}
+                className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white transition hover:bg-black/65">
+                <ChevronRight className="size-4" />
+              </button>
+            </>
+          )}
+          <div className="mt-1 flex items-center justify-between px-1 text-[9px] text-white/70">
+            <span>{allStatusUrls.indexOf(shownUrl) + 1} / {allStatusUrls.length}</span>
+            <span>点大图看全屏</span>
+          </div>
+        </div>
+      )}
       {statusChips.map(a => {
         const sImgs: string[] = statusPhotos[a.statusField] || [];
         const c = DEFAULT_COLORS[a.statusCode] ?? { bg: "#ccc", border: "#999" };
         return <div key={a.action} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1.5">
-          <div className="flex items-center gap-1.5 mb-1">
+          <div className="flex flex-wrap items-center gap-1.5 mb-1">
             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `${c.bg}18`, color: c.border, border: `1px solid ${c.border}40` }}>{a.label}</span>
+            {/* 子值跟着父状态一起显示：光一个「健康异常 / 需特殊饲养」看不出实际病情与明细 */}
+            {a.action === "HEALTH_CHECK" && severityLabel && (
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold" style={{ background: `${c.border}18`, color: c.border }}>{severityLabel}</span>
+            )}
+            {a.action === "HEALTH_CHECK" && itch && (
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold" style={{ background: `${c.border}18`, color: c.border }}>{HEALTH_ITCH_LABEL}</span>
+            )}
+            {a.action === "SPECIAL_BREEDING" && detailItems.map((d) => (
+              <span key={d.code} className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold" style={{ background: `${c.border}18`, color: c.border }}>{d.label}</span>
+            ))}
             <span className="text-[9px] text-[var(--twin-mute)]">📷 {sImgs.length}张</span>
           </div>
           {sImgs.length > 0 && <div className="flex flex-wrap gap-1">
@@ -322,6 +402,23 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
           </div>}
         </div>;
       })}
+      {/* 特殊饲养明细各自的照片桶（SF_*）：父状态之外单独成组，不然这些照片既看不见也删不掉 */}
+      {detailItems.filter((d) => (statusPhotos[d.photoKey] || []).length > 0).map((d) => {
+        const imgs = statusPhotos[d.photoKey] || [];
+        return <div key={d.photoKey} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-1.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">特殊饲养 · {d.label}</span>
+            <span className="text-[9px] text-[var(--twin-mute)]">📷 {imgs.length}张</span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {imgs.map((url, j) => statusPhotoThumb(d.photoKey, url, j))}
+          </div>
+          <div className="text-[9px] text-[var(--twin-mute)] mt-1 italic">
+            {canEditStatusPhotos ? "悬停照片右上角可删除" : "通过编辑模式管理"}
+          </div>
+        </div>;
+      })}
+
       {/* 兜底 _status key：弹窗A上传但未绑定到具体状态标记的照片 */}
       {(() => {
         const catchAll = (statusPhotos._status || []); if (catchAll.length === 0) return null;
@@ -398,7 +495,7 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
 
     {/* 照片/视频预览（双通道共享）：统一走站内弹窗，视频直接播放 */}
     <Dialog open={previewUrl !== null} onOpenChange={(o) => { if (!o) setPreviewUrl(null); }}>
-      <DialogContent className="relative max-w-[min(1100px,94vw)] overflow-hidden border-0 bg-black p-0 [&>button]:text-white">
+      <DialogContent className="max-w-[min(1100px,94vw)] overflow-hidden border-0 bg-black p-0 [&>button]:text-white">
         <DialogTitle className="sr-only">照片/视频预览</DialogTitle>
         <DialogDescription className="sr-only">点击右上角关闭；多张时可左右切换</DialogDescription>
         {previewUrl && (isVideoMediaUrl(previewUrl) ? (

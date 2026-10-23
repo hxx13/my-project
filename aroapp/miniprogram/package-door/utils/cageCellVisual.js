@@ -30,6 +30,18 @@ function colorFor(code) {
   return (userColors && userColors[code]) || DEFAULT_COLORS[code] || DEFAULT_COLORS.NORMAL;
 }
 
+/** 健康异常严重程度（item_code → 中文名）：默认三档兜底，页面拉到码表后用 setSeverityLabels 覆盖。 */
+var severityLabelByCode = { MILD: '轻微', MODERATE: '中度', SEVERE: '严重' };
+function setSeverityLabels(items) {
+  if (!items || !items.length) return;
+  var map = {};
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i] || {};
+    if (it.itemCode) map[it.itemCode] = it.itemLabel || it.itemCode;
+  }
+  severityLabelByCode = map;
+}
+
 var STATUS_BG_PRIORITY = [
   "HEALTH_ABNORMAL", "NEED_DIVIDE", "ANIMAL_TRANSFER",
   "SPECIAL_FEEDING", "COHABITATION", "NORMAL"
@@ -256,6 +268,15 @@ function enrichGridCell(cell) {
   // 类型指示灯本就不点，两枚徽标不会抢同一个角；底色跟父状态走，不另开一套配色。
   enriched._sfBadges = sfBadgesOf(normalizeStatuses(enriched.specialStatuses));
   enriched._sfBadgeColor = colorFor('SPECIAL_FEEDING').border;
+  // 健康异常那一族角标（严重程度 + 瘙痒，纵排）：与 Web CellStatusBadges 同口径 ——
+  // 严重程度不进 specialStatuses（没有状态码），网格读单独字段；瘙痒是布尔子值。
+  var healthBadges = [];
+  if (enriched.healthSeverity) {
+    healthBadges.push({ code: enriched.healthSeverity, text: severityLabelByCode[enriched.healthSeverity] || enriched.healthSeverity });
+  }
+  if (enriched.healthItch) healthBadges.push({ code: 'ITCH', text: '瘙痒' });
+  enriched._healthBadges = healthBadges;
+  enriched._healthBadgeColor = colorFor('HEALTH_ABNORMAL').border;
   // 认领徽标：未到位/待审批/待释放（对齐 H5 CellButton 左上角徽标）
   var cs = enriched.claimStatus;
   if (cs === 'locked') enriched._claimBadge = { text: '未到位', cls: 'gcell-badge--locked' };
@@ -349,6 +370,7 @@ function sfBadgesOf(list) {
 
 module.exports = {
   setUserColors: setUserColors,
+  setSeverityLabels: setSeverityLabels,
   setAccountId: setAccountId,
   colorFor: colorFor,
   getCellStyle: getCellStyle,

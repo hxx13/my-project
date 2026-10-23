@@ -11,6 +11,7 @@ import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/D
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { useHidePuxi } from "@/features/dashboard/useHidePuxi";
 
 function DetailParagraphs({ text, emptyLabel, sciFi }: { text: string; emptyLabel?: string; sciFi?: boolean }) {
     const trimmed = (text ?? "").trim();
@@ -294,7 +295,12 @@ function ProvenancePopover(props: {
 }
 
 export function TimelineWaterfall() {
-    const events = useEventStore((state) => state.realtimeEvents);
+    const hidePuxi = useHidePuxi();
+    const rawEvents = useEventStore((state) => state.realtimeEvents);
+    // 隐藏浦西：流水只保留非浦西校区的进出记录
+    const events = hidePuxi
+        ? rawEvents.filter((evt) => !String(evt.location?.campus ?? "").includes("浦西"))
+        : rawEvents;
     const setEvents = useEventStore((state) => state.setEvents);
     const [provOpen, setProvOpen] = useState<{ evt: UniversalEvent; rect: DOMRect } | null>(null);
     const visual = useDashboardVisual();

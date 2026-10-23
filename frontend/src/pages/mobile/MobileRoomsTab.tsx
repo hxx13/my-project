@@ -9,7 +9,6 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { evaluateMobileRoomAccess, computeMobilePermissionBadge, getRoomDelayOptions, resolveScanOfficialRoomId } from "./utils/mobileScanRoomAccess";
 import { submitScanDelayRequest } from "@/api/domains/scanDelay.api";
 import { executeAccess } from "@/api/domains/scanner.api";
-import { submitMobileScanDelayRequest } from "@/api/domains/mobileStudent.api";
 import type { ScanDelayOptionSummary } from "@/api/types/scanner";
 import { buildDetailRoom, type DetailRoom } from "./utils/roomPreviewMeta";
 import {
@@ -18,7 +17,6 @@ import {
   resolveDefaultCampusFloor,
 } from "./utils/roomDashboard";
 import {
-  fetchMobileRoomsPageBundle,
   fetchStudentMobileRoomsPageBundle,
   overviewToPreviewMeta,
   previewMetaToAccessItem,
@@ -43,16 +41,13 @@ const PERMISSION_BADGE_STYLE: Record<
   time: { color: "#ed6a0c", background: "#fff7e8" },
 };
 
-export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtMode?: boolean }) {
+export default function MobileRoomsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<MobileRoomsPageBundle | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
 
-  const showAuditEntry = useMemo(() => {
-    if (!jwtMode) return false;
-    return hasMinRole(authStorage.getRole(), "SENIOR");
-  }, [jwtMode]);
+  const showAuditEntry = useMemo(() => hasMinRole(authStorage.getRole(), "SENIOR"), []);
 
   const [sidebarView, setSidebarView] = useState<SidebarView>("mine");
   const [expandedCampus, setExpandedCampus] = useState<Record<string, boolean>>({
@@ -121,16 +116,13 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean; preserveSelection?: boolean }) => {
-      if (!jwtMode && !token) return;
       const silent = !!opts?.silent;
       const preserveSelection = !!opts?.preserveSelection;
       if (!silent) setLoading(true);
       setError(null);
 
       try {
-        const data = jwtMode
-          ? await fetchStudentMobileRoomsPageBundle()
-          : await fetchMobileRoomsPageBundle(token!);
+        const data = await fetchStudentMobileRoomsPageBundle();
         applyBundle(data, preserveSelection);
         loadedOnceRef.current = true;
       } catch (e) {
@@ -140,7 +132,7 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
         setLoading(false);
       }
     },
-    [token, jwtMode, applyBundle],
+    [applyBundle],
   );
 
   useEffect(() => {
@@ -192,7 +184,7 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
     return resolveScanOfficialRoomId(detailRoom.roomId, bundle.overviewIndex, bundle.scanAnalyze);
   }, [detailRoom, bundle]);
 
-  // 延迟申请提交：JWT 用 authHttp，token 用 publicHttp
+  // 延迟申请提交（登录态）
   // 房间 ID 需转为官方扫描 ID（与 Web 端行为一致，否则后台校验 isOptionBoundToRoom 失败）
   const handleDelaySubmit = useCallback(
     async (payload: { subjectUserId: string; roomId: string; optionId: number }) => {
@@ -200,10 +192,9 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
         ? resolveScanOfficialRoomId(detailRoom.roomId, bundle?.overviewIndex ?? { byRoomId: new Map(), byRoomName: new Map() }, bundle?.scanAnalyze ?? null)
         : payload.roomId;
       const fixed = { ...payload, roomId: scanId || payload.roomId };
-      if (jwtMode) return submitScanDelayRequest(fixed);
-      return submitMobileScanDelayRequest(token, fixed);
+      return submitScanDelayRequest(fixed);
     },
-    [detailRoom, bundle?.overviewIndex, bundle?.scanAnalyze, jwtMode, token],
+    [detailRoom, bundle?.overviewIndex, bundle?.scanAnalyze],
   );
 
   // 当前选中房间的进入权限（复用列表同一份评估，避免与卡片徽标口径漂移）
@@ -213,7 +204,7 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
     return hit?.access ?? null;
   }, [currentRooms, detailRoom]);
 
-  // 移动端自助进入：真实开闸，仅 jwtMode（token 直链任何人拿到链接即可进入，必须关闭）
+  // 移动端自助进入：真实开闸（仅登录态可用）
   const handleEnter = useCallback(
     async (roomId: string) => {
       if (!bundle?.userId) throw new Error("缺少人员标识");
@@ -484,7 +475,7 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
           scanRoomId={currentRoomScanId}
           onSubmitDelay={handleDelaySubmit}
           onDelaySuccess={handleDelaySuccess}
-          mobileEnterEnabled={!!jwtMode && (bundle?.scanAnalyze?.mobileEnterEnabled ?? false)}
+          mobileEnterEnabled={bundle?.scanAnalyze?.mobileEnterEnabled ?? false}
           roomEnterable={detailRoomAccess?.enterable ?? false}
           enterBlockedReason={detailRoomAccess?.reasonShort}
           alreadyInside={bundle?.scanAnalyze?.currentState === "INSIDE"}

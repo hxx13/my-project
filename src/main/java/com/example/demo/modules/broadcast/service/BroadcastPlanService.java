@@ -40,6 +40,11 @@ public class BroadcastPlanService {
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
     /** 开播时刻过了这么久才算「补播」（服务重启后没赶上的那种）。 */
     private static final long CATCHUP_AFTER_SECONDS = 120;
+    /**
+     * 开播失败后的重试间隔。不节流的话调度器每 10 秒重来一次，
+     * 现场曾出现过「一小时刷 360 条同样的失败记录」。
+     */
+    private static final long FIRST_FIRE_RETRY_MS = 5 * 60_000L;
 
     /** 方案运行态：未运行 / 执行中 / 已人工暂停。 */
     public static final String RUN_IDLE = "IDLE";
@@ -48,6 +53,8 @@ public class BroadcastPlanService {
 
     /** 上次「是否还在播」巡检时刻，按方案记。重启后丢失只会导致多巡检一次，无副作用。 */
     private final Map<Long, Long> lastResumeCheckAt = new ConcurrentHashMap<>();
+    /** 上次尝试开播的时刻（失败也记），用于失败重试节流。 */
+    private final Map<Long, Long> lastFirstFireAt = new ConcurrentHashMap<>();
 
     @Value("${app.broadcast.resume-check-ms:60000}")
     private long resumeCheckMs;
@@ -58,15 +65,18 @@ public class BroadcastPlanService {
     private final BroadcastPlanMapper planMapper;
     private final BroadcastPlanZoneStateMapper zoneStateMapper;
     private final BroadcastPlayService playService;
+    private final BroadcastSongsService songsService;
     private final DsppaClient client;
 
     public BroadcastPlanService(BroadcastPlanMapper planMapper,
                                 BroadcastPlanZoneStateMapper zoneStateMapper,
                                 BroadcastPlayService playService,
+                                BroadcastSongsService songsService,
                                 DsppaClient client) {
         this.planMapper = planMapper;
         this.zoneStateMapper = zoneStateMapper;
         this.playService = playService;
+        this.songsService = songsService;
         this.client = client;
     }
 
@@ -148,6 +158,7 @@ public class BroadcastPlanService {
         planMapper.deleteById(id);
         zoneStateMapper.deleteByPlan(id);
         lastResumeCheckAt.remove(id);
+        lastFirstFireAt.remove(id);
         log.info("[广播] 删除定时方案 #{}", id);
     }
 
@@ -209,6 +220,12 @@ public class BroadcastPlanService {
                         continue;
                     }
                     if (!today.equals(plan.getLastFiredDate())) {
+                        long nowMs = System.currentTimeMillis();
+                        Long lastTry = lastFirstFireAt.get(plan.getId());
+                        if (lastTry != null && nowMs - lastTry < FIRST_FIRE_RETRY_MS) {
+                            continue; // 刚失败过，别每轮 tick 都重试
+                        }
+                        lastFirstFireAt.put(plan.getId(), nowMs);
                         String source = nowTime.isAfter(start.plusSeconds(CATCHUP_AFTER_SECONDS))
                                 ? BroadcastPlayService.SOURCE_CATCHUP
                                 : BroadcastPlayService.SOURCE_SCHEDULE;
@@ -248,7 +265,7 @@ public class BroadcastPlanService {
         if (songs.isEmpty()) {
             throw new IllegalArgumentException("方案未配置曲目");
         }
-        String first = songs.get(0);
+        String first = firstPlayableSong(songs);
         playService.play(macs, first, plan.getVolume(), source, plan, operator);
         String today = client.scheduleNow().toLocalDate().toString();
         planMapper.markFired(plan.getId(), today, client.scheduleNow(), "已开播，首曲：" + first);
@@ -256,7 +273,24 @@ public class BroadcastPlanService {
         plan.setLastFiredDate(today);
         plan.setRunState(RUN_RUNNING);
         lastResumeCheckAt.put(plan.getId(), System.currentTimeMillis());
+        lastFirstFireAt.remove(plan.getId());
         return first;
+    }
+
+    /**
+     * 方案第一首**平台上还在**的曲目。首曲被删了就顺延到下一首，**不能整场失败**。
+     *
+     * <p>真的一首都不在了（或曲库清单读不到）时退回原首曲 —— 交给 {@code play()} 落一条
+     * 明确的失败记录，而不是在这里抛一个没人看见的异常。
+     */
+    private String firstPlayableSong(List<String> songs) {
+        try {
+            String first = BroadcastSongsService.pickExisting(songs, songsService.pathToListId());
+            return first != null ? first : songs.get(0);
+        } catch (Exception e) {
+            log.warn("[广播] 读取平台曲库失败，退回方案首曲: {}", e.getMessage());
+            return songs.get(0);
+        }
     }
 
     /** 窗口结束收播：整组停掉，并清空分区级覆盖 —— 别把昨天的暂停带到明天。 */
@@ -346,7 +380,7 @@ public class BroadcastPlanService {
                 return null;
             }
             log.warn("[广播] 方案 #{} 窗口内但 {} 路目标分区均未在播放，重新下发", plan.getId(), live.size());
-            playService.play(live, songs.get(0), plan.getVolume(),
+            playService.play(live, firstPlayableSong(songs), plan.getVolume(),
                     BroadcastPlayService.SOURCE_CATCHUP, plan, null);
             return "检测到未在播放，已按 " + live.size() + " 路重新下发";
         } catch (Exception e) {

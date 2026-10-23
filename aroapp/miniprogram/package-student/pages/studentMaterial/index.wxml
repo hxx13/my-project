@@ -133,11 +133,7 @@
       <text class="cart-entry-txt">申领栏</text>
       <view wx:if="{{ cartCount > 0 }}" class="cart-badge">{{ cartCount }}</view>
     </view>
-    <view
-      class="cart-submit {{ submitting || cartCount === 0 ? 'cart-submit-disabled' : '' }}"
-      hover-class="cart-submit-hover"
-      bindtap="submitOrder"
-    >{{ submitting ? '提交中…' : '提交申领' }}</view>
+    <view class="cart-orders" hover-class="cart-submit-hover" bindtap="goMine">申领单</view>
   </view>
 </view>
 
@@ -286,7 +282,7 @@
     <text class="sheet-total">共 {{ cartCount }} 件</text>
     <view class="sheet-foot-actions">
       <view class="sheet-btn" bindtap="closeCartSheet">收起</view>
-      <view class="sheet-btn sheet-btn-primary" bindtap="submitOrder">去提交</view>
+      <view class="sheet-btn sheet-btn-primary" bindtap="submitOrder">提交申领</view>
     </view>
   </view>
 </van-popup>

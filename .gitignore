@@ -73,6 +73,8 @@ tmp/
 *.tmp
 .cache/
 *.tsbuildinfo
+# 本机运行时二进制（如 ffmpeg），不进仓库
+.runtime/
 
 # ===== Documentation & AI assistant (local only) =====
 docs/

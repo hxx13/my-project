@@ -3,14 +3,10 @@ import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { useMobileNoticeAutoSuppress } from "./useMobileNoticeAutoSuppress";
 
 export default function MobileNoticeSuppressActions({
-  token,
-  jwtMode = false,
   item,
   onSuppressed,
   compact = false,
 }: {
-  token?: string;
-  jwtMode?: boolean;
   item: MobileAlertItem;
   onSuppressed?: () => void;
   /** 标题栏右上角：更紧凑 */
@@ -25,8 +21,6 @@ export default function MobileNoticeSuppressActions({
     startSuppress,
     countdownSeconds,
   } = useMobileNoticeAutoSuppress({
-    token,
-    jwtMode,
     item,
     alreadySuppressed: item.autoOpenSuppressed === true,
     onSuppressed,

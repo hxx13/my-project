@@ -66,6 +66,8 @@ export interface DoorSwipeRuleOperationLogRow {
   targetId: string;
   success: number;
   detail: string;
+  /** 后端展开后的中文详情（通道名等已还原），优先展示 */
+  detailDisplayZh?: string;
   eventTime: string;
   createdBy: string;
   /** 后端 label 展开字段（channelName / roomName / userName / detailDisplay 等） */

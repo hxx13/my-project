@@ -9,7 +9,7 @@ page {
 
 .ds-root {
   min-height: 100vh;
-  padding: 20rpx 24rpx;
+  padding: 16rpx 20rpx;
   box-sizing: border-box;
 }
 
@@ -17,21 +17,23 @@ page {
 .ds-tabs {
   display: flex;
   flex-wrap: nowrap;
-  padding: 6rpx;
+  padding: 4rpx;
   background: #fff;
-  border-radius: 999rpx;
-  margin-bottom: 16rpx;
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+  box-shadow: 0 4rpx 14rpx rgba(15, 23, 42, 0.06);
 }
 
 .ds-tab {
   flex: 1;
   min-width: 0;
-  padding: 12rpx 4rpx;
+  padding: 14rpx 4rpx;
   text-align: center;
   font-size: 22rpx;
   color: #64748b;
-  border-radius: 999rpx;
+  border-radius: 9rpx;
   white-space: nowrap;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .ds-tab--on {
@@ -44,8 +46,9 @@ page {
 .ds-card {
   background: #fff;
   border-radius: 14rpx;
-  padding: 20rpx;
-  margin-bottom: 16rpx;
+  padding: 18rpx;
+  margin-bottom: 12rpx;
+  box-shadow: 0 4rpx 14rpx rgba(15, 23, 42, 0.06);
 }
 
 .ds-card-title {
@@ -64,6 +67,20 @@ page {
   margin-bottom: 10rpx;
 }
 
+/* 查询/重置脱离文档流，压在筛选网格最后一格右侧 */
+.ds-card--filters {
+  position: relative;
+}
+
+.ds-filter-acts {
+  position: absolute;
+  right: 18rpx;
+  bottom: 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
 .ds-hint {
   display: block;
   margin-top: 6rpx;
@@ -77,36 +94,25 @@ page {
 .ds-grid2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 20rpx;
+  gap: 0 16rpx;
 }
 
 .ds-field {
-  padding: 10rpx 0;
+  padding: 6rpx 0;
   min-width: 0;
-}
-
-.ds-field--wide {
-  grid-column: 1 / -1;
 }
 
 .ds-field-k {
   display: block;
-  font-size: 20rpx;
+  font-size: 19rpx;
   color: #94a3b8;
-  margin-bottom: 6rpx;
-}
-
-.ds-field-v {
-  display: block;
-  font-size: 24rpx;
-  color: #1f2937;
-  word-break: break-all;
+  margin-bottom: 4rpx;
 }
 
 .ds-input {
   width: 100%;
-  height: 64rpx;
-  padding: 0 18rpx;
+  height: 58rpx;
+  padding: 0 16rpx;
   box-sizing: border-box;
   font-size: 24rpx;
   color: #1f2937;
@@ -136,8 +142,8 @@ page {
   justify-content: space-between;
   gap: 10rpx;
   width: 100%;
-  height: 64rpx;
-  padding: 0 18rpx;
+  height: 58rpx;
+  padding: 0 16rpx;
   box-sizing: border-box;
   background: #f6f7fb;
   border-radius: 10rpx;
@@ -175,11 +181,11 @@ page {
   background: #fbe9e9;
 }
 
-.ds-btn-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 16rpx;
+.ds-btn--sm {
+  height: 48rpx;
+  padding: 0 14rpx;
+  font-size: 21rpx;
+  border-radius: 8rpx;
 }
 
 /* ── 「标签 + 右侧」行 ── */
@@ -188,7 +194,7 @@ page {
   align-items: center;
   justify-content: space-between;
   gap: 16rpx;
-  padding: 14rpx 0;
+  padding: 12rpx 0;
   border-bottom: 1rpx solid #f1f3f7;
 }
 
@@ -216,9 +222,9 @@ page {
   word-break: break-all;
 }
 
-/* ── 列表项 ── */
+/* ── 列表项：标题一行 + 一条 meta 行，不再每项摊 5 个字段格 ── */
 .ds-item {
-  padding: 16rpx 0;
+  padding: 14rpx 0;
   border-bottom: 1rpx solid #f1f3f7;
 }
 
@@ -230,35 +236,131 @@ page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14rpx;
-  margin-bottom: 6rpx;
+  gap: 12rpx;
 }
 
 .ds-item-title {
   flex: 1;
   min-width: 0;
-  font-size: 26rpx;
+  font-size: 25rpx;
   font-weight: 600;
   color: #1f2937;
-  word-break: break-all;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
-.ds-item-acts {
+.ds-item-time {
+  flex: 1;
+  min-width: 0;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-ops {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+/* ── 规格小签：每项自带标签，整块换行而不是把一句话截断 ── */
+.ds-specs {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 14rpx;
-  padding-top: 14rpx;
-  border-top: 1rpx solid #f1f3f7;
+  gap: 8rpx;
+  margin-top: 10rpx;
+}
+
+.ds-spec {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6rpx;
+  max-width: 100%;
+  padding: 5rpx 12rpx;
+  border-radius: 8rpx;
+  background: #f6f7fb;
+  font-size: 20rpx;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.ds-spec-k {
+  flex-shrink: 0;
+  color: #94a3b8;
+}
+
+.ds-spec-v {
+  min-width: 0;
+  color: #334155;
+  font-weight: 600;
+  word-break: break-all;
 }
 
 .ds-item-detail {
   display: block;
-  margin-top: 8rpx;
+  margin-top: 6rpx;
   font-size: 20rpx;
   line-height: 1.5;
   color: #94a3b8;
   word-break: break-all;
+}
+
+/* ── 通道启停：两段式状态控件，当前态实色高亮，一眼可辨 ── */
+.ds-seg {
+  flex-shrink: 0;
+  display: flex;
+  padding: 3rpx;
+  border-radius: 9rpx;
+  background: #eef0f6;
+}
+
+.ds-seg-item {
+  min-width: 64rpx;
+  height: 42rpx;
+  padding: 0 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7rpx;
+  font-size: 21rpx;
+  color: #94a3b8;
+  box-sizing: border-box;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.ds-seg-item--on {
+  color: #fff;
+  font-weight: 600;
+  background: #16a34a;
+}
+
+.ds-seg-item--off {
+  color: #fff;
+  font-weight: 600;
+  background: #64748b;
+}
+
+.ds-picked {
+  display: block;
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
 }
 
 /* ── 状态胶囊：圆点 + 中性底，不铺饱和色 ── */

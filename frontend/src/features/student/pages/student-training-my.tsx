@@ -10,12 +10,14 @@ type Props = {
   view: "card" | "list";
   /** 当前校区标签（与培训列表共用切换） */
   campus: string;
+  /** 空态引导：切到「培训报名」去报名 */
+  onGoEnroll?: () => void;
 };
 
 /**
  * 「已报名」内容：按校区标签过滤，卡片/列表两种视图与外层一致。
  */
-export function StudentTrainingMyContent({ view, campus }: Props) {
+export function StudentTrainingMyContent({ view, campus, onGoEnroll }: Props) {
   const qc = useQueryClient();
   const { data = [], isLoading, isError, error, refetch } = useStudentQuery(
     ["my-enrollments"],
@@ -59,9 +61,16 @@ export function StudentTrainingMyContent({ view, campus }: Props) {
   const items = data.filter((e) => (e.campus ?? "").trim() === campus);
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-[var(--student-mute)]">
-        <GraduationCap className="mb-2 size-8" />
-        <span>暂无报名记录</span>
+      <div className="flex flex-col items-center justify-center gap-2 py-16 text-[var(--student-mute)]">
+        <GraduationCap className="size-9 opacity-40" />
+        <span className="text-[13px]">还没有报名任何培训</span>
+        <span className="text-[11px] opacity-80">去培训列表挑一场报名吧</span>
+        {onGoEnroll && (
+          <button type="button" onClick={onGoEnroll}
+            className="mt-2 rounded-lg bg-[var(--student-primary)] px-5 py-2 text-[13px] font-semibold text-white hover:opacity-90">
+            去报名
+          </button>
+        )}
       </div>
     );
   }

@@ -177,6 +177,12 @@ public class DahuaTvWallController {
         return Result.success(videoCategoryService.listTree());
     }
 
+    @PostMapping("/categories/rebuild")
+    @Operation(summary = "重建监控分类树（按通道名重新分楼层/相机组）")
+    public Result<Map<String, Object>> rebuildCategories() {
+        return Result.success(videoCategoryService.rebuild());
+    }
+
     @PostMapping("/categories")
     @Operation(summary = "新增文件夹")
     public Result<Map<String, Object>> createCategory(@RequestBody Map<String, Object> body) {

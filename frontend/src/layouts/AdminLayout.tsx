@@ -249,6 +249,16 @@ export default function AdminLayout() {
     }
   }, []);
 
+  /** 页面内专注模式（如实时监控预览）通过事件收起/恢复后台侧栏 */
+  useEffect(() => {
+    const onSidebarRequest = (event: Event) => {
+      const detail = (event as CustomEvent<boolean>).detail;
+      if (typeof detail === "boolean") setCollapsedPersist(detail);
+    };
+    window.addEventListener("twin:admin-sidebar-collapsed", onSidebarRequest);
+    return () => window.removeEventListener("twin:admin-sidebar-collapsed", onSidebarRequest);
+  }, [setCollapsedPersist]);
+
   useEffect(() => {
     let mounted = true;
     const loadPerm = async () => {

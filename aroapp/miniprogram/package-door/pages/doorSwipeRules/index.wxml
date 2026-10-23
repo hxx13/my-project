@@ -6,7 +6,7 @@
 
   <!-- ══════════ Tab1 门禁记录 ══════════ -->
   <block wx:if="{{ tab === 'records' }}">
-    <view class="ds-card">
+    <view class="ds-card ds-card--filters">
       <view class="ds-grid2">
         <view class="ds-field">
           <text class="ds-field-k">通道编码</text>
@@ -37,7 +37,7 @@
           </picker>
         </view>
       </view>
-      <view class="ds-btn-row">
+      <view class="ds-filter-acts">
         <view class="ds-btn ds-btn--pri" bindtap="onRecSearch">查询</view>
         <view class="ds-btn" bindtap="onRecReset">重置</view>
       </view>
@@ -50,15 +50,15 @@
       <block wx:else>
         <view wx:for="{{ recRows }}" wx:key="id" class="ds-item">
           <view class="ds-item-head">
-            <text class="ds-item-title">{{ item._time }}</text>
+            <text class="ds-item-time">{{ item._time }}</text>
             <view class="ds-tag">{{ item._openTypeLabel }}</view>
           </view>
-          <view class="ds-grid2">
-            <view class="ds-field"><text class="ds-field-k">通道</text><text class="ds-field-v">{{ item._channel }}</text></view>
-            <view class="ds-field"><text class="ds-field-k">卡号</text><text class="ds-field-v">{{ item.cardNumber || '-' }}</text></view>
-            <view class="ds-field"><text class="ds-field-k">人员</text><text class="ds-field-v">{{ item._person }}</text></view>
-            <view class="ds-field"><text class="ds-field-k">进 / 出</text><text class="ds-field-v">{{ item._dirLabel }}</text></view>
-            <view class="ds-field ds-field--wide"><text class="ds-field-k">结果</text><text class="ds-field-v">{{ item.openResult || '-' }}</text></view>
+          <view class="ds-specs">
+            <view class="ds-spec"><text class="ds-spec-k">通道</text><text class="ds-spec-v">{{ item._channel }}</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">人员</text><text class="ds-spec-v">{{ item._person }}</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">卡号</text><text class="ds-spec-v">{{ item.cardNumber || '-' }}</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">进出</text><text class="ds-spec-v">{{ item._dirLabel }}</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">结果</text><text class="ds-spec-v">{{ item.openResult || '-' }}</text></view>
           </view>
         </view>
         <view class="ds-more">{{ recMore ? '加载中…' : (recHasMore ? '上拉加载更多' : '没有更多了') }}</view>
@@ -78,20 +78,20 @@
       <block wx:else>
         <view wx:for="{{ rules }}" wx:key="id" class="ds-item">
           <view class="ds-item-head">
-            <text class="ds-item-title">{{ item.name }}</text>
             <view class="ds-chip {{ item.enabled ? 'ds-chip--on' : 'ds-chip--off' }}"
               data-id="{{ item.id }}" catchtap="onToggleRule">{{ item.enabled ? '启用' : '停用' }}</view>
+            <text class="ds-item-title">{{ item.name }}</text>
+            <view class="ds-ops">
+              <view class="ds-btn ds-btn--sm" data-id="{{ item.id }}" catchtap="onOpenRuleForm">编辑</view>
+              <view class="ds-btn ds-btn--sm ds-btn--danger" data-id="{{ item.id }}" catchtap="onDeleteRule">删除</view>
+            </view>
           </view>
-          <view class="ds-grid2">
-            <view class="ds-field"><text class="ds-field-k">监控通道</text><text class="ds-field-v">{{ item._channelCount }} 个</text></view>
-            <view class="ds-field"><text class="ds-field-k">人员范围</text><text class="ds-field-v">{{ item._scopeLabel }}（{{ item._scopeCount }}）</text></view>
-            <view class="ds-field"><text class="ds-field-k">阈值</text><text class="ds-field-v">{{ item.thresholdCount }} 次 / {{ item.thresholdWindowSec }} 秒</text></view>
-            <view class="ds-field"><text class="ds-field-k">常开时长</text><text class="ds-field-v">{{ item.stayOpenDurationSec }} 秒</text></view>
-            <view class="ds-field"><text class="ds-field-k">冷却</text><text class="ds-field-v">{{ item.cooldownSec }} 秒</text></view>
-          </view>
-          <view class="ds-item-acts">
-            <view class="ds-btn" data-id="{{ item.id }}" catchtap="onOpenRuleForm">编辑</view>
-            <view class="ds-btn ds-btn--danger" data-id="{{ item.id }}" catchtap="onDeleteRule">删除</view>
+          <view class="ds-specs">
+            <view class="ds-spec"><text class="ds-spec-k">监控</text><text class="ds-spec-v">{{ item._channelCount }} 个通道</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">范围</text><text class="ds-spec-v">{{ item._scopeLabel }}（{{ item._scopeCount }}）</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">阈值</text><text class="ds-spec-v">{{ item.thresholdCount }} 次 / {{ item.thresholdWindowSec }} 秒</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">常开</text><text class="ds-spec-v">{{ item.stayOpenDurationSec }} 秒</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">冷却</text><text class="ds-spec-v">{{ item.cooldownSec }} 秒</text></view>
           </view>
         </view>
       </block>
@@ -101,18 +101,15 @@
   <!-- ══════════ Tab3 通道受控 ══════════ -->
   <block wx:elif="{{ tab === 'channels' }}">
     <view class="ds-card">
-      <view class="ds-card-title">受控通道（总闸）<text class="ds-hint">只有存在于本列表且已启用的通道，才会被写入成功刷卡记录库并参与规则触发</text></view>
-      <view class="ds-line-row">
-        <text class="ds-line-name">{{ channelPickedText }}</text>
-        <view class="ds-btn" bindtap="onOpenChannelScopePicker">选择通道</view>
+      <view class="ds-card-title-row">
+        <text class="ds-card-title">受控通道</text>
+        <view class="ds-toolbar">
+          <view class="ds-btn ds-btn--sm" bindtap="onOpenChannelScopePicker">选择通道</view>
+          <view class="ds-btn ds-btn--sm ds-btn--pri" bindtap="onReplaceChannels">{{ channelsSaving ? '保存中…' : '批量替换' }}</view>
+        </view>
       </view>
-      <view class="ds-btn-row">
-        <view class="ds-btn ds-btn--pri" bindtap="onReplaceChannels">{{ channelsSaving ? '保存中…' : '批量替换' }}</view>
-      </view>
-    </view>
-
-    <view class="ds-card">
-      <view class="ds-card-title">通道启停</view>
+      <text class="ds-hint">只有存在于本列表且已启用的通道，才会被写入成功刷卡记录库并参与规则触发</text>
+      <text class="ds-picked">{{ channelPickedText }}</text>
       <view wx:if="{{ channelsLoading }}" class="ds-empty">加载中…</view>
       <view wx:elif="{{ channelRows.length === 0 }}" class="ds-empty">暂无受控通道</view>
       <block wx:else>
@@ -121,7 +118,12 @@
             <text class="ds-line-name">{{ item.channelName || item.channelCode }}</text>
             <text class="ds-line-sub">{{ item.channelCode }}</text>
           </view>
-          <switch checked="{{ item.enabled }}" color="#2563eb" data-code="{{ item.channelCode }}" catchchange="onToggleChannel" />
+          <view class="ds-seg">
+            <view class="ds-seg-item {{ item.enabled ? 'ds-seg-item--on' : '' }}"
+              data-code="{{ item.channelCode }}" data-on="1" catchtap="onToggleChannel">启用</view>
+            <view class="ds-seg-item {{ item.enabled ? '' : 'ds-seg-item--off' }}"
+              data-code="{{ item.channelCode }}" data-on="0" catchtap="onToggleChannel">停用</view>
+          </view>
         </view>
       </block>
     </view>
@@ -136,12 +138,12 @@
       <block wx:else>
         <view wx:for="{{ logRows }}" wx:key="id" class="ds-item">
           <view class="ds-item-head">
-            <text class="ds-item-title">{{ item._time }}</text>
+            <text class="ds-item-time">{{ item._time }}</text>
             <view class="ds-chip {{ item._ok ? 'ds-chip--on' : 'ds-chip--off' }}">{{ item._ok ? '成功' : '失败' }}</view>
           </view>
-          <view class="ds-grid2">
-            <view class="ds-field"><text class="ds-field-k">事件</text><text class="ds-field-v">{{ item._event }}</text></view>
-            <view class="ds-field"><text class="ds-field-k">触发</text><text class="ds-field-v">{{ item._trigger }}</text></view>
+          <view class="ds-specs">
+            <view class="ds-spec"><text class="ds-spec-k">事件</text><text class="ds-spec-v">{{ item._event }}</text></view>
+            <view class="ds-spec"><text class="ds-spec-k">触发</text><text class="ds-spec-v">{{ item._trigger }}</text></view>
           </view>
           <text wx:if="{{ item._detail !== '-' }}" class="ds-item-detail">{{ item._detail }}</text>
         </view>

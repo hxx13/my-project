@@ -11,7 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { fetchMobileAccessRecords, type MobileAccessRecord } from "@/api/domains/mobileStudent.api";
+import { type MobileAccessRecord } from "@/api/domains/mobileStudent.api";
 import { fetchStudentMobileAccessRecords } from "@/api/domains/studentMobile.api";
 
 const PAGE_SIZE = 20;
@@ -70,7 +70,7 @@ function DateGroupHeader({ date }: { date: string }) {
 }
 
 /* ================================================================== */
-export default function MobileRecordsTab({ token, jwtMode }: { token: string; jwtMode?: boolean }) {
+export default function MobileRecordsTab() {
   const [startDate, setStartDate] = useState(getDefaultStartDate);
   const [endDate, setEndDate] = useState(() => formatDate(new Date()));
   const [page, setPage] = useState(1);
@@ -81,20 +81,16 @@ export default function MobileRecordsTab({ token, jwtMode }: { token: string; jw
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!jwtMode && !token) return;
     setLoading(true);
     setError(null);
-    (jwtMode
-      ? fetchStudentMobileAccessRecords(1, 200)
-      : fetchMobileAccessRecords(token!, 1, 200)
-    )
+    fetchStudentMobileAccessRecords(1, 200)
       .then((d) => {
         setAllRecords(d.data ?? []);
         setTotal(d.total ?? 0);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
-  }, [token, jwtMode]);
+  }, []);
 
   const filteredRecords = useMemo(() => {
     return allRecords.filter((r) => {

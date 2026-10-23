@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-21T10:50:45.141Z",
+  "generatedAt": "2026-10-23T07:16:44.896Z",
   "pages": [
     {
       "path": "/about",
@@ -227,13 +227,6 @@
       "registryId": "door-control"
     },
     {
-      "path": "/admin/door-group-storage",
-      "label": "门组落库",
-      "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
-      "registryId": "door-group"
-    },
-    {
       "path": "/admin/door-swipe-rules",
       "label": "门禁成功刷卡规则",
       "fallbackMinRole": "PLATFORM_OWNER",
@@ -288,6 +281,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "系统与安全",
       "registryId": "knowledge"
+    },
+    {
+      "path": "/admin/live-preview",
+      "label": "实时监控预览",
+      "fallbackMinRole": "SUPER_ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "live-preview"
     },
     {
       "path": "/admin/logging-console",

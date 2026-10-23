@@ -8,7 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { fetchMobileViolations, type MobileViolationItem } from "@/api/domains/mobileStudent.api";
+import { type MobileViolationItem } from "@/api/domains/mobileStudent.api";
 import { fetchStudentMobileViolations } from "@/api/domains/studentMobile.api";
 import { prepareMobileNoticeHtml, MOBILE_NOTICE_BODY_CLASS } from "./mobileNoticePresentation";
 
@@ -63,7 +63,7 @@ const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   appealing: { bg: "#fee2e2", text: "#dc2626" },
 };
 
-export default function MobileViolationsTab({ token, jwtMode }: { token: string; jwtMode?: boolean }) {
+export default function MobileViolationsTab() {
   const [page, setPage] = useState(1);
   const [violations, setViolations] = useState<MobileViolationItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -72,13 +72,9 @@ export default function MobileViolationsTab({ token, jwtMode }: { token: string;
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    if (!jwtMode && !token) return;
     setLoading(true);
     setError(null);
-    (jwtMode
-      ? fetchStudentMobileViolations(page, PAGE_SIZE)
-      : fetchMobileViolations(token!, page, PAGE_SIZE)
-    )
+    fetchStudentMobileViolations(page, PAGE_SIZE)
       .then((d) => {
         setViolations(d.data ?? []);
         setTotal(d.total ?? 0);
@@ -87,7 +83,7 @@ export default function MobileViolationsTab({ token, jwtMode }: { token: string;
         setError(e instanceof Error ? e.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  }, [token, jwtMode, page, reloadKey]);
+  }, [page, reloadKey]);
 
   if (loading)
     return (

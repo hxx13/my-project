@@ -44,7 +44,7 @@ import { MonitorDashboardPage } from "@/features/admin/monitor/MonitorDashboardP
 import AgvTrackerPage from "@/pages/AgvTrackerPage";
 import AgvLogPage from "@/pages/AgvLogPage";
 import AgvAnalyticsPage from "@/pages/AgvAnalyticsPage";
-import AdminDoorGroupStoragePage from "@/pages/AdminDoorGroupStoragePage";
+import AdminDoorAuthorizePage from "@/pages/AdminDoorAuthorizePage";
 import AdminDepartmentStoragePage from "@/pages/AdminDepartmentStoragePage";
 import AdminDeviceChannelPage from "@/pages/AdminDeviceChannelPage";
 import AdminRoomMappingPage from "@/pages/AdminRoomMappingPage";
@@ -121,6 +121,7 @@ import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import ReferenceDataPage from "@/pages/ReferenceDataPage";
 import AdminOrderReviewPage from "@/pages/AdminOrderReviewPage";
 import AdminVideoWallPage from "@/pages/AdminVideoWallPage";
+import AdminLivePreviewPage from "@/pages/AdminLivePreviewPage";
 import AdminBroadcastPage from "@/pages/AdminBroadcastPage";
 import AdminAvidityPage from "@/pages/AdminAvidityPage";
 import StudentOrderRecordsPage from "@/pages/StudentOrderRecordsPage";
@@ -203,7 +204,6 @@ import NhpReviewCenterPage from "@/features/nhp/pages/admin/NhpReviewCenterPage"
 import NhpNotificationCenterPage from "@/features/nhp/pages/admin/NhpNotificationCenterPage";
 import TeamListPage from "@/features/team/TeamListPage";
 import TeamDetailPage from "@/features/team/TeamDetailPage";
-import MobileStudentCenterRoute from "@/pages/mobile/MobileStudentCenterRoute";
 import MobileStudentCenterInvalidPage from "@/pages/mobile/MobileStudentCenterInvalidPage";
 import MobileLoginPage from "@/pages/mobile/auth/MobileLoginPage";
 import SignByLinkPage from "@/pages/mobile/SignByLinkPage";
@@ -270,9 +270,9 @@ export const router = createHashRouter([
   // ═══════════════════════════════════════════════════════
   { path: "/m", element: <Navigate to="/m/login" replace /> },
   { path: "/m/sc", element: <MobileStudentCenterInvalidPage /> },
-  { path: "/m/sc/", element: <MobileStudentCenterInvalidPage /> },
-  { path: "/m/sc/:token", element: <MobileStudentCenterRoute /> },
-  // 电子签名限时链接：公开、无登录态，靠 path 里的 token 自校验（同 /m/sc/:token 的范式）
+  { path: "/m/sc/*", element: <MobileStudentCenterInvalidPage /> },
+  // 旧个人直链已停用，统一落到失效提示页
+  // 电子签名限时链接：公开、无登录态，靠 path 里的 token 自校验
   { path: "/m/sign/:token", element: <SignByLinkPage /> },
   { path: "/m/login", element: <MobileLoginPage /> },
   { path: "/m/register", element: <MobileRegisterPage /> },
@@ -453,7 +453,6 @@ export const router = createHashRouter([
                   { path: "agv-tracker", element: <AgvTrackerPage /> },
                   { path: "agv-tracker/logs", element: <AgvLogPage /> },
                   { path: "agv-tracker/analytics", element: <AgvAnalyticsPage /> },
-                  { path: "door-group-storage", element: <AdminDoorGroupStoragePage /> },
                   { path: "device-channels", element: <AdminDeviceChannelPage /> },
                   { path: "aro-rooms", element: <AdminRoomMappingPage /> },
                   { path: "exam-papers", element: <ExamPaperAdminPage /> },
@@ -514,9 +513,11 @@ export const router = createHashRouter([
                   { path: "door-swipe-rules", element: <AdminDoorSwipeRulesPage /> },
                   { path: "face-debug", element: <FaceDebugPage /> },
                   { path: "door-control", element: <AdminDoorControlPage /> },
+                  { path: "door-control/person-auth", element: <AdminDoorAuthorizePage /> },
                   // 视频上墙整机操控展厅大屏（含下发给现场大屏的实时推流），只放给超管。
                   // 别挪回上面 AdminAccessGuard 那块：那块 minRole=STAFF，普通教职工也能进。
                   { path: "video-wall", element: <AdminVideoWallPage /> },
+                  { path: "live-preview", element: <AdminLivePreviewPage /> },
                   { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage /> },
                   { path: "telemetry-archive", element: <AdminTelemetryArchivePage /> },
                   {

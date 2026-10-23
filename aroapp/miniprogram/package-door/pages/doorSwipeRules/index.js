@@ -474,7 +474,10 @@ Page({
 
   onToggleChannel(e) {
     const code = e.currentTarget.dataset.code;
+    const desired = String(e.currentTarget.dataset.on) === '1';
     if (!code || this._busy) return;
+    const row = (this.data.channelRows || []).find((c) => String(c.channelCode) === String(code));
+    if (!row || !!row.enabled === desired) return;
     this._busy = true;
     springAuth
       .springRequest({ url: `${API}/channels/${encodeURIComponent(code)}/toggle`, method: 'PATCH', data: {} })
@@ -648,7 +651,7 @@ Page({
         _event: r.eventKey || r.automationType || '-',
         _trigger: r.triggerType || r.triggerReason || '-',
         _ok: Number(r.success) === 1,
-        _detail: r.detail || '-',
+        _detail: r.detailDisplayZh || r.detail || '-',
       }));
       const rows = reset ? list : this.data.logRows.concat(list);
       const total = Number(payload.total || 0);

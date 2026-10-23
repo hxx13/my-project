@@ -41,6 +41,7 @@ var cageCellVisual = require('../../utils/cageCellVisual.js');
 
 /* 格子可视化统一走 util（与卡牌打印页共用同一套渲染口径，避免两页各留一份实现） */
 var setUserColors = cageCellVisual.setUserColors;
+var setSeverityLabels = cageCellVisual.setSeverityLabels;
 var getCellStyle = cageCellVisual.getCellStyle;
 var getDominantCodeLabel = cageCellVisual.getDominantCodeLabel;
 var resolveAnimalCageType = cageCellVisual.resolveAnimalCageType;
@@ -455,6 +456,15 @@ function getActiveShelveId(pageData) {
 /*  Page Definition                                                      */
 /* ================================================================== */
 
+/* 状态点固定顺序：需分笼(黄) → 健康异常(紫) → 动物转移(青) → 特殊饲养(红) → 合笼(绿) */
+var STATUS_DOT_ORDER = ['#eab308', '#a855f7', '#06b6d4', '#ef4444', '#10b981'];
+function sortStatusDots(list) {
+  return (list || []).slice().sort(function(a, b) {
+    var ai = STATUS_DOT_ORDER.indexOf(a), bi = STATUS_DOT_ORDER.indexOf(b);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+  });
+}
+
 Page({
   data: {
     loading: true,
@@ -473,9 +483,13 @@ Page({
     scrollIntoViewId: '',     // 收藏里点房间 → 滚到它
     allShelfGroups: [],       // unfiltered, for filter dropdown
     // 顶部快捷块：我的区域（含本课题组笼位的房间）/ 收藏区域（收藏的真实房间）
-    // 只存计数，用来决定两块的显隐；行数据直接复用 shelfGroups，展开状态天然与主列表同步
+    // 行数据是 shelfGroups 的**克隆**，展开状态各用各的 key —— 与主列表共用会让
+    // 点主列表某间房时头顶同一间跟着展开，页面高度突变导致列表乱跳。
     myRoomCount: 0,
     favRoomCount: 0,
+    myQuickRooms: [],
+    favQuickRooms: [],
+    quickExpanded: {},
     totalCount: 0,
 
     // Search & filter
@@ -839,7 +853,14 @@ Page({
     // 健康异常严重程度的可选项：同样读码表（加项不用改代码）；失败就不显示严重程度块
     springAuth.springRequest({ url: '/api/admin/cage-info/codelists/' + HEALTH_SEVERITY_DICT, method: 'GET', data: {} }).then(function(res) {
       var up = unwrap(res);
-      if (up.ok && up.data && up.data.items) self.setData({ severityOptions: up.data.items });
+      if (up.ok && up.data && up.data.items) {
+        setSeverityLabels(up.data.items);
+        self.setData({ severityOptions: up.data.items });
+        // 网格可能先于码表建好：补一次重建，让自定义档位的中文名也能落到角标上
+        if (self._gridRawCells && self._gridRawCells.length) {
+          self.setData({ grid: buildGrid(self._gridRawCells) });
+        }
+      }
     }).catch(function() { /* 没配码表就不显示 */ });
 
     // 解析扫码跳转参数（微信可能不解码，手动 decodeURIComponent）
@@ -947,15 +968,23 @@ Page({
       var scannedAtText = beijingTime.formatBeijingDateTimeMinute(scannedAtRaw);
       var scannedAt = scannedAtText ? (scannedAtText.slice(5) + ' 扫描') : '';
 
-      // 合并 full-tree 的类型计数到每个 shelf
+      // 合并 full-tree 的类型计数 + 特殊状态位到每个 shelf（状态位已按隐私口径下发）
       var treeResult = unwrap(results[1]);
       var treeData = treeResult.ok ? treeResult.data : [];
       var typeMap = {};
+      var flagMap = {};
       shelfIndexIdMap = {};
       for (var ti = 0; ti < (treeData || []).length; ti++) {
         var tn = treeData[ti];
         if (tn.shelveId) {
           typeMap[String(tn.shelveId)] = { t1: tn.type1 || 0, t2: tn.type2 || 0, t3: tn.type3 || 0, t4: tn.type4 || 0 };
+          flagMap[String(tn.shelveId)] = [
+            tn.cohabitation > 0 ? '#10b981' : '',
+            tn.needDivide > 0 ? '#eab308' : '',
+            tn.animalTransfer > 0 ? '#06b6d4' : '',
+            tn.specialFeeding > 0 ? '#ef4444' : '',
+            tn.healthAbnormal > 0 ? '#a855f7' : ''
+          ].filter(Boolean);
         }
         if (tn.shelveId && tn.id != null) {
           shelfIndexIdMap[String(tn.shelveId)] = tn.id;
@@ -966,6 +995,7 @@ Page({
         if (sc) {
           shelves[si].c1 = sc.t1; shelves[si].c2 = sc.t2; shelves[si].c3 = sc.t3; shelves[si].c4 = sc.t4;
         }
+        shelves[si]._statusDots = sortStatusDots(flagMap[String(shelves[si].shelveId)] || []);
       }
 
       var campusGroups = cageTreeGrouping.groupShelvesByCampus(shelves);
@@ -982,6 +1012,15 @@ Page({
               var s = grp.shelves[sj];
               grp.c1 += s.c1 || 0; grp.c2 += s.c2 || 0; grp.c3 += s.c3 || 0; grp.c4 += s.c4 || 0;
             }
+            // 组级状态点 = 组内笼架状态点的并集
+            var grpDots = [];
+            for (var sj2 = 0; sj2 < grp.shelves.length; sj2++) {
+              var sd = grp.shelves[sj2]._statusDots || [];
+              for (var sdi = 0; sdi < sd.length; sdi++) {
+                if (grpDots.indexOf(sd[sdi]) < 0) grpDots.push(sd[sdi]);
+              }
+            }
+            grp._statusDots = sortStatusDots(grpDots);
             rm.c1 += grp.c1; rm.c2 += grp.c2; rm.c3 += grp.c3; rm.c4 += grp.c4;
             /* 收藏星标的粒度 = **真实房间**：组名本来就是真实房号（201A/201B/201C），
                行首那个 201 只是按房号前缀聚合出来的展示行。
@@ -997,6 +1036,15 @@ Page({
           for (var gi2 = 0; gi2 < rm.shelfGroups.length; gi2++) {
             rm.shelfCount += rm.shelfGroups[gi2].shelves.length;
           }
+          // 房间级状态点 = 本房间所有组状态点的并集
+          var rmDots = [];
+          for (var gi3 = 0; gi3 < rm.shelfGroups.length; gi3++) {
+            var gd = rm.shelfGroups[gi3]._statusDots || [];
+            for (var gdi = 0; gdi < gd.length; gdi++) {
+              if (rmDots.indexOf(gd[gdi]) < 0) rmDots.push(gd[gdi]);
+            }
+          }
+          rm._statusDots = sortStatusDots(rmDots);
         }
       }
 
@@ -1228,7 +1276,8 @@ Page({
             c1: src.c1, c2: src.c2, c3: src.c3, c4: src.c4,
             /* 收藏要用：重建时把真实 roomId 与 ☆ 状态一起带上，否则过滤后星标就点不动了 */
             roomId: src.roomId || '',
-            _fav: src._fav === true
+            _fav: src._fav === true,
+            _statusDots: src._statusDots || []
           });
           roomShelfCount += src.shelves.length;
         }
@@ -1239,7 +1288,8 @@ Page({
           shelfCount: roomShelfCount,
           expanded: false,
           hasHighlight: room.hasHighlight,
-          c1: room.c1, c2: room.c2, c3: room.c3, c4: room.c4
+          c1: room.c1, c2: room.c2, c3: room.c3, c4: room.c4,
+          _statusDots: room._statusDots || []
         });
       }
       if (matchedRooms.length > 0) {
@@ -1330,7 +1380,7 @@ Page({
     this._refreshQuickCounts();
   },
 
-  /** 顶部快捷块计数：只驱动两块是否渲染（行本身直接复用列表数据，不另存副本） */
+  /** 顶部快捷块计数：只驱动两块是否渲染（行本身是列表数据的克隆，见 _rebuildQuickRooms） */
   _refreshQuickCounts: function() {
     var my = 0, fav = 0;
     (this.data.shelfGroups || []).forEach(function(c) {
@@ -1342,6 +1392,46 @@ Page({
     if (my !== this.data.myRoomCount || fav !== this.data.favRoomCount) {
       this.setData({ myRoomCount: my, favRoomCount: fav });
     }
+    this._rebuildQuickRooms();
+  },
+
+  /**
+   * 克隆快捷块行：每块各用独立的展开 key（quickExpanded），与主列表互不牵连。
+   * 模板靠 `_quick` / `_qkey` 把点击分流回来（onToggleRoom / onToggleShelfGroup）。
+   */
+  _rebuildQuickRooms: function() {
+    var qe = this.data.quickExpanded || {};
+    var my = [], fav = [];
+    (this.data.shelfGroups || []).forEach(function(campus) {
+      (campus.rooms || []).forEach(function(room) {
+        var base = {
+          roomName: room.roomName, shelfCount: room.shelfCount,
+          hasHighlight: room.hasHighlight,
+          c1: room.c1, c2: room.c2, c3: room.c3, c4: room.c4,
+          _statusDots: room._statusDots || []
+        };
+        if (room.hasHighlight) {
+          var rk = 'mine:' + campus.campusName + '::' + room.roomName;
+          var mine = Object.assign({}, base, { _quick: 'mine', _qkey: rk, expanded: !!qe[rk], shelfGroups: [] });
+          (room.shelfGroups || []).forEach(function(g) {
+            var gk = rk + '::' + g.key;
+            mine.shelfGroups.push(Object.assign({}, g, { _quick: 'mine', _qkey: gk, expanded: !!qe[gk] }));
+          });
+          my.push(mine);
+        }
+        var favGroups = (room.shelfGroups || []).filter(function(g) { return g._fav; });
+        if (favGroups.length) {
+          var fk = 'fav:' + campus.campusName + '::' + room.roomName;
+          var favRoom = Object.assign({}, base, { _quick: 'fav', _qkey: fk, expanded: !!qe[fk], shelfGroups: [] });
+          favGroups.forEach(function(g) {
+            var gk2 = fk + '::' + g.key;
+            favRoom.shelfGroups.push(Object.assign({}, g, { _quick: 'fav', _qkey: gk2, expanded: !!qe[gk2] }));
+          });
+          fav.push(favRoom);
+        }
+      });
+    });
+    this.setData({ myQuickRooms: my, favQuickRooms: fav });
   },
   /** 弹层数据：按收藏顺序平铺（房间一条、笼架一条），名字从当前列表里查。
       房间条目自带它下面的笼架列表 —— 收藏夹里点房间是**原地展开**看笼架，不再跳回列表。 */
@@ -1503,7 +1593,15 @@ Page({
 
   onToggleRoom: function(e) {
     var self = this;
-    var roomName = e.currentTarget.dataset.roomName;
+    var ds = e.currentTarget.dataset || {};
+    // 快捷块（我的区域 / 收藏区域）：只翻自己的展开态，不动主列表
+    if (ds.quick) {
+      var qe = Object.assign({}, self.data.quickExpanded || {});
+      qe[ds.qkey] = !qe[ds.qkey];
+      self.setData({ quickExpanded: qe }, function() { self._rebuildQuickRooms(); });
+      return;
+    }
+    var roomName = ds.roomName;
     var groups = self.data.shelfGroups;
     for (var ci = 0; ci < groups.length; ci++) {
       for (var ri = 0; ri < groups[ci].rooms.length; ri++) {
@@ -1518,8 +1616,15 @@ Page({
 
   onToggleShelfGroup: function(e) {
     var self = this;
-    var roomName = e.currentTarget.dataset.roomName;
-    var groupKey = e.currentTarget.dataset.groupKey;
+    var ds = e.currentTarget.dataset || {};
+    if (ds.quick) {
+      var qe = Object.assign({}, self.data.quickExpanded || {});
+      qe[ds.qkey] = !qe[ds.qkey];
+      self.setData({ quickExpanded: qe }, function() { self._rebuildQuickRooms(); });
+      return;
+    }
+    var roomName = ds.roomName;
+    var groupKey = ds.groupKey;
     var groups = self.data.shelfGroups;
     for (var ci = 0; ci < groups.length; ci++) {
       for (var ri = 0; ri < groups[ci].rooms.length; ri++) {
@@ -1572,6 +1677,7 @@ Page({
       var data = p.data || {};
       var shelfMeta = data.shelfMeta || {};
       var gridCells = data.grid || [];
+      self._gridRawCells = gridCells;
       var grid = buildGrid(gridCells);
 
       var patch = {
@@ -1597,7 +1703,7 @@ Page({
       self.applyPoolToGrid();
       self.applySelectionToGrid();
       self.applyMyClaimToGrid();
-      self.applyDivisionBlockedToGrid();
+      self.applyModeBlockedToGrid();
       // 选位模式下切架：不重投影 op 池高亮，绿色可选环会消失、要再点一次格子才回来
       self.applyOpToGrid();
       self.loadCageOpMarkers();
@@ -1883,7 +1989,7 @@ Page({
       showCellDetail: false
     }, function() {
       self.applyCacheToGrid();
-      self.applyDivisionBlockedToGrid();
+      self.applyModeBlockedToGrid();
       if (mode === 'allocate') self.loadAupList();
       else if (mode === 'booking') self.loadBookingAups();
       else if (mode === 'studentClaim') self.loadPoolCells();
@@ -1982,16 +2088,25 @@ Page({
   },
 
   /**
-   * 划分模式：type1（待分配）不可选 → 网格盖红色细斜线。
-   * 只做视觉标记；点击仍由 toggleDivisionCell 给完整原因（toast）。
-   * 离开划分模式时同一函数把标记清掉。
+   * 当前模式下「选不了/标不了」的笼位 → 网格盖红色细斜线（对齐 Web 的不可选网纹）。
+   *   - 划分：type1（等待分配）不可划 —— 未归属课题组，是底层约束。
+   *   - 状态：只有饲养中/异常可标（与 onCellTap 的闸门同源）；学生视角还须是本人笼位。
+   * 只做视觉标记；点击仍由各自的处理函数给完整原因（toast）。离开该模式时同一函数把标记清掉。
    */
-  applyDivisionBlockedToGrid: function() {
+  applyModeBlockedToGrid: function() {
     var grid = this.data.grid || [];
-    var on = this.data.pageMode === 'division';
+    var mode = this.data.pageMode;
+    var staff = !!this.data.isStaffView;
     var patch = {};
     for (var i = 0; i < grid.length; i++) {
-      patch['grid[' + i + ']._divisionBlocked'] = on && cageTypeOf(grid[i]) === 1;
+      var c = grid[i];
+      var blocked = false;
+      if (!c.empty) {
+        var ct = cageTypeOf(c);
+        if (mode === 'division') blocked = ct === 1;
+        else if (mode === 'edit') blocked = (ct !== 3 && ct !== 4) || (!staff && !c.mine);
+      }
+      patch['grid[' + i + ']._divisionBlocked'] = blocked;
     }
     this.setData(patch);
   },
@@ -3397,6 +3512,8 @@ Page({
       expViewRec: null,
       // 换笼位必须清空上一只的标注照片：loadCellAnnotation 在「无标注」时提前 return，不会覆盖
       detailStatusPhotos: {},
+      detailMediaUrl: '',
+      detailMediaList: [],
       detailHasStatusBlock: false,
       detailAnnotationLoading: detailMeta.permitted,
       // 查看详情：三页签（概况 / 状态 / 实验记录），记住上次选择
@@ -3520,6 +3637,29 @@ Page({
       var statusChips = cageStatus.CAGE_STATUS_ACTIONS
         .filter(function(a) { return activeActions[a.action]; })
         .map(function(a) { return { code: a.statusField, label: a.label, abbr: a.abbr, color: a.color, bg: a.bg, statusField: a.statusField }; });
+      // 子值跟着父状态展示：健康异常（严重程度 + 瘙痒）、特殊饲养明细 —— 光一个父状态看不出实情
+      var sevCode = severityFromValues(arr[1]);
+      var sevLabel = sevCode;
+      var sOpts = self.data.severityOptions || [];
+      for (var si = 0; si < sOpts.length; si++) {
+        if (sOpts[si].itemCode === sevCode) { sevLabel = sOpts[si].itemLabel || sevCode; break; }
+      }
+      var itchOn = itchFromValues(arr[1]);
+      var detailMap = detailMapFromValues(arr[1]);
+      var dOpts = self.data.specialDetailOptions || [];
+      var detailLabels = [];
+      dOpts.forEach(function(o) { if (detailMap[o.itemCode]) detailLabels.push(o.itemLabel || o.itemCode); });
+      statusChips.forEach(function(ch) {
+        var subs = [];
+        if (ch.code === 'has_health_abnormality') {
+          if (sevCode) subs.push(sevLabel);
+          if (itchOn) subs.push(HEALTH_ITCH_LABEL);
+        } else if (ch.code === 'needs_special_feeding') {
+          subs = detailLabels.slice();
+        }
+        ch.subs = subs;
+        ch.subText = subs.join(' · ');
+      });
       // 按模板分区建树：弹窗按分区渲染；formRows 是扁平副本，扫码确认弹窗仍按平铺渲染
       var tree = buildFormTree(tpl.entries, arr[1], tpl.dict);
       /* 角色优先：学生先看动物信息，教职工先看项目/归属。
@@ -3796,9 +3936,23 @@ loadCellAnnotation: function(cell) {
       Object.keys(statusPhotos).forEach(function(k) {
         if (Array.isArray(statusPhotos[k])) statusPhotos[k].forEach(function(u) { if (isVideoUrl(u)) videoMap[u] = true; });
       });
+      // 详情页大图：按状态 chips 顺序摊平全部影像（chips 之外的 SF_*/_status 桶补在后面）
+      var mediaList = [];
+      var chips = (self.data.cellDetail && self.data.cellDetail.statusChips) || [];
+      chips.forEach(function(ch) {
+        var arr = statusPhotos[ch.statusField];
+        if (Array.isArray(arr)) arr.forEach(function(u) { mediaList.push(u); });
+      });
+      Object.keys(statusPhotos).forEach(function(k) {
+        if (k === '_note' || !Array.isArray(statusPhotos[k])) return;
+        if (chips.some(function(ch) { return ch.statusField === k; })) return;
+        statusPhotos[k].forEach(function(u) { mediaList.push(u); });
+      });
       self.setData({
         detailStatusPhotos: statusPhotos,
         photoIsVideo: videoMap,
+        detailMediaList: mediaList,
+        detailMediaUrl: mediaList[0] || '',
         detailHasStatusBlock: hasStatusContent(statusPhotos),
         detailAnnotationLoading: false
       });
@@ -4037,6 +4191,33 @@ loadCellAnnotation: function(cell) {
    * 照片预览（状态照片一线）：把当前弹窗里状态照片汇成一个可左右滑动的大图列表。
    * 实验记录自己的照片走 onExpPreviewImage —— 台账独立成卷，别和状态照片混在一个列表里。
    */
+  /** 详情页：点缩略图只切换大图，点大图才进灯箱 */
+  onDetailMediaPick: function(e) {
+    var url = e.currentTarget.dataset.url;
+    if (url) this.setData({ detailMediaUrl: url });
+  },
+
+  /** 详情页大图：左右滑动切换（图片/视频同列，循环） */
+  onDetailMediaTouchStart: function(e) {
+    var t = (e.touches && e.touches[0]) || {};
+    this._mediaTouchX = typeof t.clientX === 'number' ? t.clientX : t.pageX;
+  },
+  onDetailMediaTouchEnd: function(e) {
+    var list = this.data.detailMediaList || [];
+    var sx = this._mediaTouchX;
+    this._mediaTouchX = null;
+    if (list.length < 2 || typeof sx !== 'number') return;
+    var t = (e.changedTouches && e.changedTouches[0]) || {};
+    var ex = typeof t.clientX === 'number' ? t.clientX : t.pageX;
+    if (typeof ex !== 'number') return;
+    var dx = ex - sx;
+    if (Math.abs(dx) < 40) return;
+    var idx = list.indexOf(this.data.detailMediaUrl);
+    if (idx < 0) idx = 0;
+    var next = (idx + (dx < 0 ? 1 : -1) + list.length) % list.length;
+    this.setData({ detailMediaUrl: list[next] });
+  },
+
   onDetailPreviewImage: function(e) {
     var url = e.currentTarget.dataset.url;
     if (!url) return;
@@ -5960,6 +6141,8 @@ getCellStyleWxs: function(cell) {
       if (!up2.ok) { wx.showToast({ title: up2.message || '保存失败', icon: 'none' }); return; }
       self.setData({ editActionPhotoDirty: {} }); // 已落库的桶不再算脏
       wx.showToast({ title: '标注已保存', icon: 'success' });
+      // 保存成功即收抽屉（用户口径：保存完别停在原地）；改过的状态仍在待提交缓存里，不随抽屉关掉丢失
+      self.onEditActionJustClose();
     }).catch(function(e) {
       wx.showToast({ title: '保存失败: ' + ((e && e.message) || ''), icon: 'none' });
     });

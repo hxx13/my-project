@@ -198,15 +198,22 @@
   line-height: 1;
 }
 
-/* 特殊饲养明细角标（+食 / −水）：贴右上角 */
-.cg-sf {
+/* 右上角两族角标并排：健康异常（严重程度/瘙痒）在左，特殊饲养明细在右，各自纵排 */
+.cg-badges {
   position: absolute;
   top: 2rpx;
   right: 2rpx;
   display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 2rpx;
+  z-index: 2;
+}
+
+.cg-badge-col {
+  display: flex;
   flex-direction: column;
   align-items: flex-end;
-  z-index: 2;
 }
 
 .cg-sf-pill {
@@ -266,12 +273,12 @@
   top: 0;
   bottom: 0;
   z-index: 2;
-  background: repeating-linear-gradient(
+  background: rgba(220, 38, 38, 0.07) repeating-linear-gradient(
     45deg,
-    rgba(220, 38, 38, 0.28) 0,
-    rgba(220, 38, 38, 0.28) 2rpx,
-    rgba(220, 38, 38, 0) 2rpx,
-    rgba(220, 38, 38, 0) 16rpx
+    rgba(220, 38, 38, 0.45) 0,
+    rgba(220, 38, 38, 0.45) 3rpx,
+    rgba(220, 38, 38, 0) 3rpx,
+    rgba(220, 38, 38, 0) 14rpx
   );
 }
 
@@ -350,7 +357,7 @@
   font-size: 14rpx;
 }
 
-.cg-grid--compact .cg-sf {
+.cg-grid--compact .cg-badges {
   top: 0;
   right: 0;
 }

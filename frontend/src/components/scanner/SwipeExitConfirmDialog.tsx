@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, LogOut, Smartphone } from "lucide-react";
+import { X, LogOut } from "lucide-react";
 import { resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
 import { SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { MobileQrCard } from "./MobileQrCard";
+import "./scannerConfirmDialog.css";
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
     userName: string;
+    /** 被扫人账号标识：展示其个人免登录码 */
+    userId?: string;
     roomName: string;
     onConfirm: () => void;
     onCancel: () => void;
@@ -19,20 +22,18 @@ interface SwipeExitConfirmDialogProps {
     autoSignoutState?: string | null;
     /** 倒计时归零回调：关闭弹窗 + 刷新状态 */
     onCountdownEnd?: () => void;
-    /** 当前扫码人 userId，用于生成手机端直达二维码 */
-    studentUserId?: string;
 }
 
 export function SwipeExitConfirmDialog({
     open,
     userName,
+    userId,
     roomName,
     onConfirm,
     onCancel,
     autoSignoutSeconds,
     autoSignoutState,
     onCountdownEnd,
-    studentUserId,
 }: SwipeExitConfirmDialogProps) {
     const { theme } = useTheme();
     const isDark = theme.mode === 'dark';
@@ -91,7 +92,7 @@ export function SwipeExitConfirmDialog({
     const countdownCopy = resolveAutoSignoutCountdownCopy(autoSignoutState);
 
     return createPortal(
-        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}>
+        <div className={`${theme.className} ${isDark ? 'dark' : ''} minimizable-notice scan-confirm-dialog`}>
         <AnimatePresence>
             {open && (
                 <motion.div
@@ -100,100 +101,74 @@ export function SwipeExitConfirmDialog({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
                     {...SCAN_MODAL_LAYER_PROPS}
-                    className="swipe-exit-confirm-anchor fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 pointer-events-none"
+                    className="mn-backdrop"
                     onKeyDown={(e) => {
                         if (e.key === "Escape") onCancel();
                     }}
                 >
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.92, y: 20 }}
+                        initial={{ opacity: 0, scale: 0.92, y: 16 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.92, y: 20 }}
+                        exit={{ opacity: 0, scale: 0.94, y: 8 }}
                         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                        className="swipe-exit-confirm-card relative z-10 mx-4 w-full max-w-[400px] overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] pointer-events-auto"
+                        className="mn-modal-card"
                     >
-                        {/* Close button */}
                         <button
                             onClick={onCancel}
-                            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] transition-colors hover:bg-[var(--app-color-surface-active)] hover:text-[var(--app-color-text-primary)]"
+                            className="mn-close-btn"
                             title="取消 Esc"
+                            aria-label="取消"
                         >
-                            <X className="w-4 h-4" />
+                            <X className="h-4 w-4" strokeWidth={2} />
                         </button>
 
-                        <div className="p-8 pt-10">
-                            {/* Icon */}
-                            <div className="flex justify-center mb-5">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)]">
-                                    <LogOut className="h-6 w-6 text-[var(--app-color-feedback-danger)]" />
-                                </div>
-                            </div>
+                        <div className="mn-icon-well mn-icon-well--warning">
+                            <LogOut className="h-6 w-6" strokeWidth={2.5} />
+                        </div>
 
-                            {/* Title */}
-                            <h2 className="mb-2 text-center text-lg font-bold text-[var(--app-color-text-primary)]">
+                        <h2 className="mn-title">确认离开</h2>
+
+                        <div className="w-full text-center" style={{ margin: "2px 0 6px" }}>
+                            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--app-color-text-secondary)", lineHeight: 1.4 }}>
+                                {userName || "未知人员"}
+                            </div>
+                            <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.2, color: "var(--app-color-feedback-warning)" }}>
+                                {roomName || "当前房间"}
+                            </div>
+                        </div>
+
+                        {countdown != null && countdown > 0 && (
+                            <div className="mn-desc" style={{ fontSize: 15, fontWeight: 700, color: "var(--app-color-feedback-warning)" }}>
+                                {countdownCopy.badge}　{Math.floor(countdown / 60)}:
+                                {String(countdown % 60).padStart(2, "0")}
+                            </div>
+                        )}
+
+                        <div className="w-full text-center" style={{ fontSize: 14, fontWeight: 700, color: "var(--app-color-text-primary)", marginTop: 6 }}>
+                            离开后需重新扫码进入
+                        </div>
+
+                        {userId && (
+                            <div className="mn-extra" style={{ justifyContent: "center" }}>
+                                <MobileQrCard userId={userId} showRegenerate={false} />
+                            </div>
+                        )}
+
+                        <div className="mn-actions">
+                            <button
+                                type="button"
+                                onClick={onCancel}
+                                className="mn-btn mn-btn--ghost"
+                            >
+                                取消
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onConfirm}
+                                className="mn-btn mn-btn--danger"
+                            >
                                 确认离开
-                            </h2>
-
-                            {/* 倒计时信息提示：倒计时结束自动签退，也可随时点击确认离开（提前签退） */}
-                            {countdown != null && countdown > 0 && (
-                                <div className="mb-4 text-center">
-                                    <p className="text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
-                                        {countdownCopy.hint}
-                                        {" 可随时点击确认离开。"}
-                                    </p>
-                                </div>
-                            )}
-
-                            {/* User & Room Info */}
-                            <div className="text-center mb-5 space-y-1">
-                                <p className="text-sm text-[var(--app-color-text-secondary)]">
-                                    <span className="font-semibold text-[var(--app-color-text-primary)]">{userName || "未知人员"}</span>
-                                </p>
-                                <p className="text-[13px] text-[var(--app-color-text-tertiary)]">
-                                    当前处于<span className="font-semibold text-[var(--app-color-feedback-warning)]">进入</span>状态，将离开{" "}
-                                    <span className="font-semibold text-[var(--app-color-text-primary)]">{roomName || "当前房间"}</span>
-                                </p>
-                            </div>
-
-                            {/* Divider */}
-                            <div className="mb-6 border-t border-[var(--app-color-border-default)]" />
-
-                            {/* Warning */}
-                            <p className="mb-5 text-center text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
-                                离开后门禁权限将被回收，如需再次进入请重新扫码
-                            </p>
-
-                            {/* QR 底部横条 */}
-                            {studentUserId ? (
-                                <div className="scan-entry-qr-strip mb-5">
-                                    <div className="scan-entry-qr-strip__info">
-                                        <Smartphone className="size-[18px] shrink-0 text-[var(--app-color-text-tertiary)]" strokeWidth={1.5} />
-                                        <span>扫描二维码可实时查看当前状态</span>
-                                    </div>
-                                    <div className="scan-entry-qr-strip__qr">
-                                        <MobileQrCard userId={studentUserId} adaptive />
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            {/* Buttons */}
-                            <div className="flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={onCancel}
-                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] py-2.5 text-sm font-semibold text-[var(--app-color-text-secondary)] transition-colors hover:bg-[var(--app-color-surface-active)] hover:text-[var(--app-color-text-primary)]"
-                                >
-                                    取消
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={onConfirm}
-                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_40%,transparent)] bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[color-mix(in_srgb,var(--app-color-feedback-danger)_60%,transparent)] hover:bg-[var(--app-color-feedback-danger-soft)]"
-                                >
-                                    确认离开
-                                </button>
-                            </div>
+                            </button>
                         </div>
                     </motion.div>
                 </motion.div>

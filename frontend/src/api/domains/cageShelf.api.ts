@@ -505,6 +505,8 @@ export interface CageShelfTreeNode {
   roomId: string; roomName: string;
   shelveId: string; shelveName: string;
   type1?: number; type2?: number; type3?: number; type4?: number;
+  /** 五种特殊状态的“存在数”（该架带此状态的笼位数），>0 即画对应颜色的小圆点 */
+  needDivide?: number; specialFeeding?: number; animalTransfer?: number; healthAbnormal?: number; cohabitation?: number;
 }
 
 /** GET /api/cage-shelves/full-tree — 全量树，前端缓存无需级联 */

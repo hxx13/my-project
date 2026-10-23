@@ -55,10 +55,18 @@ public class BroadcastPlayService {
         }
         client.requireReady();
         try {
-            // 平台下发播放要求同时给出「曲目属于哪个曲库列表」，这里按路径回查
-            String listId = plan != null && plan.getSongListId() != null && !plan.getSongListId().isBlank()
-                    ? plan.getSongListId()
-                    : songsService.findListIdBySongPath(songPath);
+            // 平台下发播放要求同时给出「曲目属于哪个曲库列表」，**按路径现查**：
+            // 用保存时的快照会在曲库变动后回「目标不存在」，且方案里的歌可能横跨多个列表。
+            String listId;
+            try {
+                listId = songsService.findListIdBySongPath(songPath);
+            } catch (Exception e) {
+                // 曲库清单读不到（HTTP 抖动）时退回方案里保存的，别让一次读文件失败挡住开播
+                listId = plan == null ? "" : plan.getSongListId();
+            }
+            if (listId == null || listId.isBlank()) {
+                throw new BroadcastException("曲目已不在平台曲库：" + fileNameOf(songPath) + "，请重新选择曲目");
+            }
             client.play(macs, listId, songPath, volume);
             record(plan, source, "PLAY", macs, List.of(songPath), true,
                     "已下发播放：" + fileNameOf(songPath), operator);

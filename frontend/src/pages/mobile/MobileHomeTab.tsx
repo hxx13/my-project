@@ -18,10 +18,7 @@ type TabKey = MobileShellTabKey;
 interface MobileHomeTabProps {
   data: NonNullable<MobileCenterData>;
   branding: LoginBranding | null;
-  expiresAt?: string;
   wsConnected?: boolean;
-  token?: string;
-  jwtMode?: boolean;
   /** 公告区（公告 + 豁免 + 违规） */
   announcements: MobileAlertItem[];
   /** 最新公告未读：公告通知标题右上角红点 */
@@ -43,10 +40,7 @@ interface MobileHomeTabProps {
 export default function MobileHomeTab({
   data,
   branding,
-  expiresAt,
   wsConnected = false,
-  token,
-  jwtMode,
   presenceRefresh = 0,
   homeActive = true,
   announcements,
@@ -58,13 +52,13 @@ export default function MobileHomeTab({
   onOpenFeedback,
 }: MobileHomeTabProps) {
   const { profile } = data.dashboard;
-  const presence = useMobilePresenceStatus(token, presenceRefresh, jwtMode, homeActive);
+  const presence = useMobilePresenceStatus(presenceRefresh, homeActive);
 
   return (
     <div className="h-full min-h-0 overflow-y-auto flex flex-col" style={{ background: "transparent" }}>
       {/* Hero 固定高度，禁止 flex 压缩 */}
       <div className="shrink-0 relative z-[1]">
-        <HeroBanner branding={branding} expiresAt={!jwtMode ? expiresAt : undefined} wsConnected={wsConnected} jwtMode={jwtMode} />
+        <HeroBanner branding={branding} wsConnected={wsConnected} />
       </div>
 
       <div className="relative z-10 -mt-6 mx-4 shrink-0">
@@ -146,7 +140,7 @@ export default function MobileHomeTab({
               { id: "records2", label: "出入记录", iconSrc: MOBILE_STUDENT_ICON.records, onClick: () => onNav("records") },
               { id: "notices", label: "通知", iconSrc: MOBILE_STUDENT_ICON.notify, onClick: () => onOpenFeedback(), badge: feedbackCount },
               { id: "animalOrder", label: "动物订购", iconSrc: MOBILE_STUDENT_ICON.animalOrder, onClick: () => onNav("animalOrder") },
-              { id: "violations", label: "违规记录", iconSrc: MOBILE_STUDENT_ICON.violation, onClick: () => onNav("violations") },
+              { id: "training", label: "培训报名", iconSrc: MOBILE_STUDENT_ICON.violation, onClick: () => onNav("training") },
             ].map((item) => (
               <button
                 key={item.id}

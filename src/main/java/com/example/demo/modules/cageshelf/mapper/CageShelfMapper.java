@@ -97,6 +97,14 @@ public interface CageShelfMapper {
     /** 全量树：所有未被删除的笼架索引，含完整校区→区域→楼层→房间→笼架层级 */
     List<Map<String, Object>> listFullTree();
 
+    /**
+     * 每个笼架「有哪些特殊状态」（笼架页左侧树的小圆点）。
+     *
+     * <p>口径是 <b>cage_info_value（表单真相源）</b>，不是 cage_cell_detail 的冗余布尔 ——
+     * 实测存在「表单已标健康异常、detail 仍是 0」的旧数据，读 detail 会漏点。</p>
+     */
+    List<Map<String, Object>> selectShelveStatusFlags();
+
     /** 扫码索引：按 roomName 查第一个笼架的真实 shelveId（快照表的 shelve_id 不可靠） */
     CageShelfIndex findFirstByRoomNameAndCampus(@Param("roomName") String roomName,
                                                  @Param("campusName") String campusName);

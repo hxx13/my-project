@@ -1,14 +1,8 @@
 /** 手机版学生中心 — 壳组件：数据加载、Tab 切换、底部导航、WebSocket、实时提醒 */
 import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
 import { Loader2, WifiOff, X, Scan, Home } from "lucide-react";
 import {
-  fetchMobileCenter,
-  fetchMobileAlerts,
-  markMobileAlertsReadAll,
-  markMobileAnnouncementsViewed,
-  isMobileTokenDead,
   type MobileCenterData,
   type MobileAlertItem,
 } from "@/api/domains/mobileStudent.api";
@@ -75,26 +69,6 @@ function PageError({ message, onRetry }: { message: string; onRetry: () => void 
   );
 }
 
-/** 直链（扫码）失效专用页：直链不可恢复，引导改用正式版登录 */
-function PageTokenDead({ code, message, onLogin }: { code: number; message: string; onLogin: () => void }) {
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6" style={{ background: PAGE_BG }}>
-      <WifiOff className="size-12" style={{ color: "#c8c9cc" }} />
-      <h1 className="text-base font-semibold text-center" style={{ color: "#323233" }}>
-        {code === 1010002 ? "直链模式已过期" : "直链模式已失效"}
-      </h1>
-      <p className="text-sm text-center max-w-xs leading-relaxed" style={{ color: "#969799" }}>
-        {message}。扫码直链有效期有限，重新生成后旧链接会立即作废。
-      </p>
-      <p className="text-sm text-center max-w-xs leading-relaxed" style={{ color: "#969799" }}>
-        请使用正式版模式登录后查看学生中心。
-      </p>
-      <button onClick={onLogin} className="px-6 py-2.5 rounded-full text-white text-sm font-medium active:scale-95"
-        style={{ background: `linear-gradient(135deg, ${BRAND}, #8B1229)` }}>去登录</button>
-    </div>
-  );
-}
-
 /** JWT 模式下加载首页数据（profile + home 并行） */
 async function loadJwtHomeData(): Promise<{
   profile: import("@/api/domains/mobileStudent.api").MobileCenterProfile;
@@ -123,13 +97,10 @@ function WatermarkLogo() {
 /* ================================================================== */
 /* Main                                                                */
 /* ================================================================== */
-export default function MobileStudentCenterPage({ token: tokenProp }: { token?: string } = {}) {
-  const { token: tokenFromParams } = useParams<{ token: string }>();
-  const token = (tokenProp ?? tokenFromParams ?? "").trim() || undefined;
+export default function MobileStudentCenterPage() {
   const [data, setData] = useState<MobileCenterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tokenDead, setTokenDead] = useState<{ code: number; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<MobileShellTabKey>("home");
   /** 培训报名页点「去学习」：切到答题页并打开一次视频列表 */
   const [videoRequest, setVideoRequest] = useState(false);
@@ -155,8 +126,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [html5PrivilegeBypass, setHtml5PrivilegeBypass] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
 
-  const navigate = useNavigate();
-
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [cageJumpTarget, setCageJumpTarget] = useState<{
@@ -166,8 +135,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
 
   const [showFeedback, setShowFeedback] = useState(false);
   const [announcementFocusKey, setAnnouncementFocusKey] = useState<string | null>(null);
-  const jwtMode = !token;
-  const { connected: wsConnected, lastAlert, lastUserNotify, clearUserNotify } = useMobileSocket(token, jwtMode);
+  const { connected: wsConnected, lastAlert, lastUserNotify, clearUserNotify } = useMobileSocket();
   const [dismissedAlert, setDismissedAlert] = useState<string | null>(null);
   const [userNotifyBanner, setUserNotifyBanner] = useState<{ title: string; summary: string } | null>(null);
   const [presenceRefresh, setPresenceRefresh] = useState(0);
@@ -179,55 +147,35 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const prevTabRef = useRef<MobileShellTabKey>("home");
 
   const loadAlerts = useCallback(async () => {
-    if (!token) {
-      // JWT mode
-      try {
-        const resp = await loadJwtAlerts();
-        const ann = sortMobileAnnouncementsForDisplay(resp.announcements ?? resp.items ?? []);
-        const fb = resp.feedbacks ?? [];
-        setAnnouncements(ann);
-        setFeedbacks(fb);
-        setAnnouncementsUnread(resp.announcementsUnread === true);
-      } catch { /* silent */ }
-      return;
-    }
-    // Token mode (original logic, unchanged)
     try {
-      const resp = await fetchMobileAlerts(token);
+      const resp = await loadJwtAlerts();
       const ann = sortMobileAnnouncementsForDisplay(resp.announcements ?? resp.items ?? []);
       const fb = resp.feedbacks ?? [];
       setAnnouncements(ann);
       setFeedbacks(fb);
-      setHtml5PrivilegeBypass(resp.html5PrivilegeBypass === true);
       setAnnouncementsUnread(resp.announcementsUnread === true);
-    } catch {
-      /* 静默失败 */
-    }
-  }, [token]);
+    } catch { /* silent */ }
+  }, []);
 
   const openAnnouncements = useCallback((focusKey?: string) => {
     setAnnouncementFocusKey(focusKey ?? null);
     setShowAnnouncements(true);
     // 打开公告区即标记已读：只清本地红点，不整表重拉 — post-save-no-full-refresh.mdc
-    const markViewed = token
-      ? markMobileAnnouncementsViewed(token)
-      : markStudentMobileAnnouncementsViewed();
-    markViewed.then(() => setAnnouncementsUnread(false)).catch(() => {});
-  }, [token]);
+    markStudentMobileAnnouncementsViewed()
+      .then(() => setAnnouncementsUnread(false))
+      .catch(() => {});
+  }, []);
 
   const openFeedback = useCallback(() => {
     setShowFeedback(true);
     void loadAlerts();
     // 后台标记所有反馈通知为已读，同时更新本地状态让角标即时消失
-    const markPromise = token
-      ? markMobileAlertsReadAll(token)
-      : markStudentMobileAlertsReadAll();
-    markPromise
+    markStudentMobileAlertsReadAll()
       .then(() => {
         setFeedbacks((prev) => prev.map((f) => ({ ...f, isRead: true })));
       })
       .catch(() => {});
-  }, [loadAlerts, token]);
+  }, [loadAlerts]);
 
   /** 保存后仅合并当前条，禁止整表 load — post-save-no-full-refresh.mdc */
   const handleNoticeSuppressed = useCallback((itemKey: string) => {
@@ -239,68 +187,44 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   }, []);
 
   const load = useCallback(async () => {
-    // JWT mode: no token param, authenticated via AuthGuard
-    if (!token) {
-      if (!authStorage.hasToken()) {
-        setLoading(false);
-        setError("请先登录");
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        const [homeData, b] = await Promise.all([
-          loadJwtHomeData(),
-          fetchLoginBranding().catch(() => null),
-        ]);
-        const jwtData: MobileCenterData = {
-          dashboard: {
-            profile: homeData.profile,
-            stats: homeData.home.stats,
-            pinnedRooms: homeData.home.pinnedRooms,
-            recentRecords: homeData.home.recentRecords,
-            recentNotices: homeData.home.recentNotices,
-          },
-          expiresAt: "",
-          userId: authStorage.getUserInfo()?.id,
-          html5PrivilegeBypass: hasMobileHtml5Privilege(authStorage.getRole()),
-        };
-        setData(jwtData);
-        setHtml5PrivilegeBypass(jwtData.html5PrivilegeBypass === true);
-        setBranding(b);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "加载失败");
-      } finally {
-        setLoading(false);
-      }
+    if (!authStorage.hasToken()) {
+      setLoading(false);
+      setError("请先登录");
       return;
     }
-
-    // Token mode (original logic, unchanged)
     setLoading(true);
     setError(null);
-    setTokenDead(null);
     try {
-      const [d, b] = await Promise.all([
-        fetchMobileCenter(token),
+      const [homeData, b] = await Promise.all([
+        loadJwtHomeData(),
         fetchLoginBranding().catch(() => null),
       ]);
-      setData(d);
+      const jwtData: MobileCenterData = {
+        dashboard: {
+          profile: homeData.profile,
+          stats: homeData.home.stats,
+          pinnedRooms: homeData.home.pinnedRooms,
+          recentRecords: homeData.home.recentRecords,
+          recentNotices: homeData.home.recentNotices,
+        },
+        expiresAt: "",
+        userId: authStorage.getUserInfo()?.id,
+        html5PrivilegeBypass: hasMobileHtml5Privilege(authStorage.getRole()),
+      };
+      setData(jwtData);
+      setHtml5PrivilegeBypass(jwtData.html5PrivilegeBypass === true);
       setBranding(b);
     } catch (e) {
-      if (isMobileTokenDead(e)) {
-        setTokenDead({ code: e.code, message: e.message });
-      } else {
-        setError(e instanceof Error ? e.message : "加载失败");
-      }
+      setError(e instanceof Error ? e.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
+
   useEffect(() => {
     void load();
     void loadAlerts();
-  }, [token, load, loadAlerts]);
+  }, [load, loadAlerts]);
 
   /** 切回首页：静默刷新进出状态与公告，不卸载 Home Tab — 对齐小程序 onShow */
   useEffect(() => {
@@ -361,14 +285,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   }, [activeTab]);
 
   if (loading) return <PageSkeleton />;
-  if (tokenDead)
-    return (
-      <PageTokenDead
-        code={tokenDead.code}
-        message={tokenDead.message}
-        onLogin={() => navigate("/m/login", { replace: true })}
-      />
-    );
   if (error) return <PageError message={error} onRetry={load} />;
   if (!data) return <PageError message="暂无数据" onRetry={load} />;
   const bannerKey = userNotifyBanner
@@ -455,7 +371,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         ) : null}
       />
 
-      <WatermarkLogo />
+      {/* 笼架页不铺品牌水印：格网/列表信息密度高，水印只会干扰辨认 */}
+      {activeTab !== "cage" && activeTab !== "material" && activeTab !== "animalOrder" && <WatermarkLogo />}
       {showLiveAlert && liveAlertTitle && (
         <div
           className="fixed left-3 right-3 z-[var(--z-dropdown)] animate-bounce-in"
@@ -507,10 +424,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           <MobileHomeTab
             data={data}
             branding={branding}
-            expiresAt={data.expiresAt}
             wsConnected={wsConnected}
-            token={token}
-            jwtMode={jwtMode}
             presenceRefresh={presenceRefresh}
             homeActive={activeTab === "home"}
             announcements={announcements}
@@ -524,22 +438,18 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             onOpenFeedback={openFeedback}
           />
         </div>
-        {activeTab === "rooms" && <MobileRoomsTab token={token!} jwtMode={jwtMode} />}
-        {activeTab === "material" && <MobileMaterialTab token={token!} jwtMode={jwtMode} />}
-        {activeTab === "records" && <MobileRecordsTab token={token!} jwtMode={jwtMode} />}
-        {activeTab === "violations" && <MobileViolationsTab token={token!} jwtMode={jwtMode} />}
+        {activeTab === "rooms" && <MobileRoomsTab />}
+        {activeTab === "material" && <MobileMaterialTab />}
+        {activeTab === "records" && <MobileRecordsTab />}
+        {activeTab === "violations" && <MobileViolationsTab />}
         {activeTab === "group" && (
           <MobileGroupTab
-            token={token!}
-            jwtMode={jwtMode}
             groupName={data.dashboard.profile.projectGroupName || ""}
           />
         )}
         {activeTab === "cage" && (
           <MobileCageShelfTab
             ref={cageShelfRef}
-            token={token!}
-            jwtMode={jwtMode}
             html5PrivilegeBypass={
               data.html5PrivilegeBypass === true || html5PrivilegeBypass
             }
@@ -551,15 +461,12 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         {activeTab === "mine" && (
           <MobileMineTab
             data={data}
-            expiresAt={data.expiresAt}
-            jwtMode={jwtMode}
             onNav={goTab}
             onOpenAnnouncements={() => openAnnouncements()}
           />
         )}
-        {activeTab === "animalOrder" && <MobileAnimalOrderView jwtMode={jwtMode} onRegisterExitGuard={registerEditExitGuard} />}
-        {/* 培训报名 / 答题：只做登录态（/m/home），扫码特殊通道不走这两个接口 */}
-        {activeTab === "training" && jwtMode && (
+        {activeTab === "animalOrder" && <MobileAnimalOrderView onRegisterExitGuard={registerEditExitGuard} />}
+        {activeTab === "training" && (
           <MobileTrainingTab
             onGoVideoLearning={() => {
               setVideoRequest(true);
@@ -567,7 +474,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             }}
           />
         )}
-        {activeTab === "exam" && jwtMode && (
+        {activeTab === "exam" && (
           <MobileExamTab
             ref={examRef}
             onBarChange={setExamBar}
@@ -575,8 +482,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             onVideosOpened={() => setVideoRequest(false)}
           />
         )}
-        {activeTab === "certificates" && jwtMode && <MobileCertificatesTab />}
-        {activeTab === "health" && jwtMode && <MobileHealthTab />}
+        {activeTab === "certificates" && <MobileCertificatesTab />}
+        {activeTab === "health" && <MobileHealthTab />}
       </main>
       <MobileNoticesPanel
         open={showAnnouncements}
@@ -589,8 +496,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
           data.html5PrivilegeBypass === true || html5PrivilegeBypass
         }
         initialFocusKey={announcementFocusKey}
-        token={token}
-        jwtMode={jwtMode}
         onNoticeSuppressed={handleNoticeSuppressed}
       />
       <MobileFeedbackPanel
@@ -599,11 +504,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         items={feedbacks}
         wsConnected={wsConnected}
         onMarkAllRead={async () => {
-          if (token) {
-            await markMobileAlertsReadAll(token);
-          } else {
-            await markStudentMobileAlertsReadAll();
-          }
+          await markStudentMobileAlertsReadAll();
           setFeedbacks((prev) => prev.map((f) => ({ ...f, isRead: true })));
         }}
       />

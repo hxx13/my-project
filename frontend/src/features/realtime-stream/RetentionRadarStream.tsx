@@ -5,6 +5,7 @@ import { Activity, Clock, AlertTriangle, ShieldCheck } from "lucide-react";
 import { resolveLedgerIsOwnCard } from "@/utils/cardLedgerBadges";
 import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+import { useHidePuxi } from "@/features/dashboard/useHidePuxi";
 
 type RetentionRow = Record<string, unknown>;
 
@@ -12,6 +13,10 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
     activeTab: '浦东' | '浦西',
     setActiveTab: (tab: '浦东' | '浦西') => void
 }) {
+    const hidePuxi = useHidePuxi();
+    // 隐藏浦西时页签收成单个浦东，数据也锁在浦东
+    const visibleTabs = hidePuxi ? (['浦东'] as const) : (['浦东', '浦西'] as const);
+    const effectiveTab = hidePuxi ? '浦东' : activeTab;
     const toBoolFlag = (value: unknown): boolean => {
         if (value === true || value === 1) return true;
         if (typeof value === "string") {
@@ -36,7 +41,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
                 return;
             }
             try {
-                const data = await fetchRetentionWarnings(100, activeTab);
+                const data = await fetchRetentionWarnings(100, effectiveTab);
                 setWarnings(data || []);
             } catch (error) {
                 console.error("❌ 滞留雷达拉取失败:", error);
@@ -46,7 +51,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
         loadWarnings();
         const intervalId = setInterval(loadWarnings, 60_000);
         return () => clearInterval(intervalId);
-    }, [activeTab]);
+    }, [effectiveTab]);
 
     useEffect(() => {
         const timerId = setInterval(() => {
@@ -161,12 +166,12 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
                             )
                         }`}
                     >
-                        {(['浦东', '浦西'] as const).map((tab) => (
+                        {visibleTabs.map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
                                 className={`px-2 py-[2px] text-[10px] font-bold rounded-[4px] transition-all ${
-                                    activeTab === tab
+                                    effectiveTab === tab
                                         ? dashTone(
                                               visual,
                                               "bg-cyan-500/25 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.35)] border border-cyan-400/40",
@@ -218,7 +223,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
                     >
                         <Activity className="w-8 h-8 mb-2"/>
                         {/* 💥 4. 动态显示空状态提示 */}
-                        <span className="text-sm font-bold">当前 {activeTab} 区域无滞留记录</span>
+                        <span className="text-sm font-bold">当前 {effectiveTab} 区域无滞留记录</span>
                     </div>
                 ) : (
                     <div className="w-full flex flex-col pt-1">

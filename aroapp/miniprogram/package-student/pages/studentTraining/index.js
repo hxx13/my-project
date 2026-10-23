@@ -146,6 +146,13 @@ Page({
     Promise.resolve(task).then(done, done);
   },
 
+  /** 空态引导：切到「培训列表」去报名 */
+  goEnrollList() {
+    if (this.data.tab === 'list') return;
+    this.setData({ tab: 'list' });
+    this.loadList();
+  },
+
   onSwitchTab(e) {
     const tab = e.currentTarget.dataset.tab;
     if (tab === this.data.tab) return;

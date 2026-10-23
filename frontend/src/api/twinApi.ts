@@ -749,6 +749,7 @@ export interface DahuaDoorGroupRow {
 
 export interface DahuaDeviceChannelRemarkCategory {
     id: number;
+    parentId?: number | null;
     name: string;
     sortOrder?: number | null;
     [key: string]: any;
@@ -808,17 +809,22 @@ export const fetchDahuaDeviceChannelRemarkCategories = async (): Promise<DahuaDe
     return asArrayData(res.data?.data || res.data);
 };
 
-export const createDahuaDeviceChannelRemarkCategory = async (payload: { name: string; sortOrder?: number | null }) => {
+export const createDahuaDeviceChannelRemarkCategory = async (payload: { name: string; sortOrder?: number | null; parentId?: number | null }) => {
     const res = await authHttp.post('/v1/dahua/meta/device-channels/remark-categories', payload);
     return res.data;
 };
 
 export const updateDahuaDeviceChannelRemarkCategory = async (
     id: number,
-    payload: { name: string; sortOrder?: number | null }
+    payload: { name: string; sortOrder?: number | null; parentId?: number | null }
 ) => {
     const res = await authHttp.put(`/v1/dahua/meta/device-channels/remark-categories/${id}`, payload);
     return res.data;
+};
+
+export const seedDahuaDoorCategories = async () => {
+    const res = await authHttp.post('/v1/dahua/meta/device-channels/seed-categories');
+    return asData<Record<string, any>>(res.data, {});
 };
 
 export const deleteDahuaDeviceChannelRemarkCategory = async (id: number) => {
@@ -834,6 +840,319 @@ export const patchDahuaDeviceChannelRemark = async (id: number, remarkCategoryId
 export const refreshDahuaDeviceChannels = async () => {
     const res = await authHttp.post('/v1/dahua/meta/device-channels/refresh');
     return res.data;
+};
+
+/** 仅门禁通道（unit_type=7），门组分配/按人授权用 */
+export const fetchDahuaDoorChannels = (params: {
+    page?: number;
+    pageSize?: number;
+    keyword?: string;
+    channelType?: string;
+    ownerCode?: string;
+    remarkCategoryId?: number;
+    unassignedOnly?: boolean;
+} = {}) => fetchDahuaDeviceChannels({ ...params, unitType: 7 });
+
+// ── 门组分配 / 按人授权（直接读写大华平台） ──────────────────────────
+
+export interface DahuaDoorGroupDetailChannel {
+    id?: number;
+    channelCode: string;
+    channelName?: string;
+    deviceCode?: string;
+    orgName?: string;
+}
+
+export interface DahuaDoorGroupDetailRow {
+    id: number;
+    name?: string;
+    memo?: string;
+    orgCode?: string;
+    orgName?: string;
+    doorGroupDetail?: DahuaDoorGroupDetailChannel[];
+    [key: string]: any;
+}
+
+export interface DahuaDeviceOrgRow {
+    code: string;
+    name: string;
+    parentCode?: string | null;
+}
+
+export interface DahuaPersonCard {
+    cardNumber?: string;
+    isMainCard?: number;
+    cardStatus?: string;
+    personId?: number;
+}
+
+export interface DahuaPersonRow {
+    id: number;
+    /** 底层人员检索返回 code/name；按人授权列表返回 personCode/personName */
+    code?: string;
+    name?: string;
+    personCode?: string;
+    personName?: string;
+    deptId?: number;
+    departmentName?: string;
+    deptNameList?: string[];
+    deptFullPathList?: string[];
+    cardList?: DahuaPersonCard[];
+    authorizeStatus?: string;
+    status?: string;
+    biosignatureList?: Array<Record<string, any>>;
+    authorizeSourceList?: string[];
+    facePath?: string;
+    [key: string]: any;
+}
+
+export interface DahuaPersonAuthorityRow {
+    privilegeType: number;
+    resourceCode: string;
+    resourceName?: string;
+    orgName?: string;
+    timeQuantumId?: number;
+    timeQuantumName?: string;
+    [key: string]: any;
+}
+
+export interface DahuaPersonAuthorityDetail {
+    personCode?: string;
+    personName?: string;
+    personPrivilegeDetails?: DahuaPersonAuthorityRow[];
+    [key: string]: any;
+}
+
+export const fetchDahuaDoorGroupsWithDetails = async (): Promise<DahuaDoorGroupDetailRow[]> => {
+    const res = await authHttp.get('/v1/dahua/door-admin/door-groups');
+    return asData<DahuaDoorGroupDetailRow[]>(res.data, []);
+};
+
+export const createDahuaDoorGroup = async (payload: {
+    name: string;
+    memo?: string;
+    orgCode?: string;
+    channelCodes: string[];
+}) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/door-groups', payload);
+    return res.data;
+};
+
+export const updateDahuaDoorGroup = async (id: number, payload: {
+    name: string;
+    memo?: string;
+    orgCode?: string;
+    channelCodes: string[];
+}) => {
+    const res = await authHttp.put(`/v1/dahua/door-admin/door-groups/${id}`, payload);
+    return res.data;
+};
+
+export const deleteDahuaDoorGroup = async (id: number) => {
+    const res = await authHttp.delete(`/v1/dahua/door-admin/door-groups/${id}`);
+    return res.data;
+};
+
+export const fetchDahuaDeviceOrgs = async (): Promise<DahuaDeviceOrgRow[]> => {
+    const res = await authHttp.get('/v1/dahua/door-admin/orgs');
+    return asData<DahuaDeviceOrgRow[]>(res.data, []);
+};
+
+export const fetchDahuaDepartmentTree = async (): Promise<DahuaDepartmentRow[]> => {
+    const res = await authHttp.get('/v1/dahua/door-admin/departments');
+    return asData<DahuaDepartmentRow[]>(res.data, []);
+};
+
+export const fetchDahuaPersons = async (params: {
+    deptId?: number;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+} = {}): Promise<{ pageData: DahuaPersonRow[]; totalRows?: number; currentPage?: number; pageSize?: number }> => {
+    const res = await authHttp.get('/v1/dahua/door-admin/persons', { params });
+    return asData(res.data, { pageData: [] });
+};
+
+export const fetchDahuaPersonAuthorities = async (personCode: string): Promise<DahuaPersonAuthorityDetail> => {
+    const res = await authHttp.get(`/v1/dahua/door-admin/persons/${encodeURIComponent(personCode)}/authorities`);
+    return asData<DahuaPersonAuthorityDetail>(res.data, {});
+};
+
+/** 新增人员（姓名 + 部门必填，工号缺省自动生成，可选连带录卡） */
+export const createDahuaPerson = async (payload: {
+    name: string;
+    code?: string;
+    departmentId: number;
+    phone?: string;
+    email?: string;
+    sex?: number | null;
+    birthday?: string;
+    paperType?: number | null;
+    paperNumber?: string;
+    cardNumber?: string;
+}) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/persons', payload);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '新增人员失败');
+    return asData<{ id?: number; code?: string; card?: Record<string, any> }>(body, {});
+};
+
+/** 已删除人员（回收站） */
+export const fetchDeletedDahuaPersons = async (params: {
+    deptId?: number;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+} = {}): Promise<{ pageData: DahuaPersonRow[]; totalRows?: number }> => {
+    const res = await authHttp.get('/v1/dahua/door-admin/persons/deleted', { params });
+    return asData(res.data, { pageData: [] });
+};
+
+export const restoreDahuaPersons = async (ids: number[]) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/persons/restore', { ids });
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '恢复人员失败');
+    return body.data;
+};
+
+export const purgeDahuaPersons = async (ids: number[]) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/persons/purge', { ids });
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '彻底删除失败');
+    return body.data;
+};
+
+/** 门禁通道编组（批量操作常用的一组门禁） */
+export interface DahuaDoorChannelGroupRow {
+    id: number;
+    name: string;
+    channelCodes: string[];
+    updatedAt?: string;
+}
+
+export const fetchDoorChannelGroups = async (): Promise<DahuaDoorChannelGroupRow[]> => {
+    const res = await authHttp.get('/v1/dahua/door-admin/channel-groups');
+    return asData<DahuaDoorChannelGroupRow[]>(res.data, []);
+};
+
+export const saveDoorChannelGroup = async (payload: { name: string; channelCodes: string[] }) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/channel-groups', payload);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '保存编组失败');
+    return body.data;
+};
+
+export const deleteDoorChannelGroup = async (id: number) => {
+    const res = await authHttp.delete(`/v1/dahua/door-admin/channel-groups/${id}`);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '删除编组失败');
+    return body.data;
+};
+
+/** 修改人员所属部门 */
+export const updateDahuaPersonDepartment = async (
+    personId: number,
+    payload: { name?: string; code: string; departmentId: number },
+) => {
+    const res = await authHttp.put(`/v1/dahua/door-admin/persons/${personId}/department`, payload);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '修改部门失败');
+    return body.data;
+};
+
+/** 给人员补录一张卡 */
+export const addDahuaPersonCard = async (personId: number, payload: { departmentId: number; cardNumber: string }) => {
+    const res = await authHttp.post(`/v1/dahua/door-admin/persons/${personId}/cards`, payload);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '录卡失败');
+    return body.data;
+};
+
+/** 设为主卡（后端会先把原主卡降级） */
+export const setDahuaMainCard = async (
+    personId: number,
+    payload: { departmentId: number; cardNumber: string; oldMainCardNumber?: string },
+) => {
+    const res = await authHttp.put(`/v1/dahua/door-admin/persons/${personId}/cards/main`, payload);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '设为主卡失败');
+    return body.data;
+};
+
+/** 删除人员的某张卡 */
+export const deleteDahuaPersonCard = async (personId: number, cardNumber: string) => {
+    const res = await authHttp.post(`/v1/dahua/door-admin/persons/${personId}/cards/delete`, { cardNumber });
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '删卡失败');
+    return body.data;
+};
+
+/** 删除人员（软删）；deleteCard=true 时连带删除卡片 */
+export const deleteDahuaPersons = async (payload: {
+    ids: number[];
+    deleteCard?: boolean;
+    departmentId?: string;
+}) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/persons/delete', payload);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '删除人员失败');
+    return body.data;
+};
+
+export const authorizeDahuaPerson = async (payload: {
+    personCode: string;
+    channelCodes: string[];
+    doorGroupIds: number[];
+    startDate?: string;
+    endDate?: string;
+}) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/authorize', payload);
+    return res.data;
+};
+
+export const revokeDahuaPerson = async (payload: {
+    personCode: string;
+    channelCodes: string[];
+    doorGroupIds: number[];
+}) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/revoke', payload);
+    return res.data;
+};
+
+/** 修改单个通道名称（门禁 / 视频通道通用） */
+export const renameDahuaChannel = async (payload: { channelCode: string; channelName: string }) => {
+    const res = await authHttp.put('/v1/dahua/door-admin/channels/name', payload);
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '改名失败');
+    return body.data;
+};
+
+/** 批量修改通道名称；未来视频通道管理页可直接复用 */
+export const batchRenameDahuaChannels = async (items: Array<{ channelCode: string; channelName: string }>) => {
+    const res = await authHttp.post('/v1/dahua/door-admin/channels/batch-rename', { items });
+    const body = res.data;
+    if (!body?.success) throw new Error(body?.message || '批量改名失败');
+    return asData<{ successCount?: number; failedCount?: number; failures?: Array<Record<string, any>> }>(body, {});
+};
+
+/** 超过单次上限（200）时自动分批，逐段下发；onProgress 用于提示进度 */
+export const batchRenameDahuaChannelsChunked = async (
+    items: Array<{ channelCode: string; channelName: string }>,
+    onProgress?: (done: number, total: number) => void,
+) => {
+    const CHUNK = 200;
+    let successCount = 0;
+    let failedCount = 0;
+    const failures: Array<Record<string, any>> = [];
+    for (let i = 0; i < items.length; i += CHUNK) {
+        const part = items.slice(i, i + CHUNK);
+        const res = await batchRenameDahuaChannels(part);
+        successCount += res.successCount ?? part.length;
+        failedCount += res.failedCount ?? 0;
+        if (res.failures) failures.push(...res.failures);
+        onProgress?.(Math.min(i + CHUNK, items.length), items.length);
+    }
+    return { successCount, failedCount, failures };
 };
 
 export const fetchDoorControlChannels = async (params: {

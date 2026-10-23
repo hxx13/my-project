@@ -1,4 +1,4 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import gsap from "gsap";
@@ -14,6 +14,7 @@ import DashboardQrCarousel from '@/features/dashboard/DashboardQrCarousel';
 import { UnifiedRankingCard } from '@/features/dashboard/UnifiedRankingCard';
 import { RetentionRadarStream } from '@/features/realtime-stream/RetentionRadarStream';
 import { RuleCodexCard } from '@/features/dashboard/RuleCodexCard';
+import { useHidePuxi } from '@/features/dashboard/useHidePuxi';
 import { SciFiDashboardChrome } from '@/features/dashboard-scifi-theme/SciFiDashboardChrome';
 import { DashboardSciFiVisualProvider } from '@/features/dashboard-scifi-theme/DashboardSciFiVisualContext';
 import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContext';
@@ -26,7 +27,12 @@ export default function DashboardPage() {
     const isDark = effectiveMode === 'dark';
     const chromeShellVisual = sciFiTheme.enabled || isDark;
     const [activeTab, setActiveTab] = useState<'浦东' | '浦西'>('浦东');
+    const hidePuxi = useHidePuxi();
     const dashRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (hidePuxi) setActiveTab('浦东');
+    }, [hidePuxi]);
 
     useGSAP(() => {
       if (!dashRef.current) return;
@@ -95,7 +101,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex min-h-0 flex-[4] dash-card">
                         <GlassCard blobColor="rgba(45,92,247,0.3)">
-                            <DashboardQrCarousel qrUrl={`${window.location.origin}/#/m/login`}>
+                            <DashboardQrCarousel>
                                 <NestedPieChart />
                             </DashboardQrCarousel>
                         </GlassCard>

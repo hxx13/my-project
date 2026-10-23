@@ -1,5 +1,6 @@
 package com.example.demo.modules.dahua.service;
 
+import com.example.demo.modules.dahua.entity.DahuaDeviceChannelCache;
 import com.example.demo.modules.dahua.mapper.DahuaTvWallTourMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -154,10 +155,16 @@ public class DahuaTvWallService {
         return asMap(call("VMS.TvWall.GetTvWallCapacity", data).get("data"));
     }
 
-    /** 可用视频通道（IPC + NVR），读本地缓存（由定时任务 JOB_DH_CHANNEL_REFRESH 刷新）。 */
+    /** 可用视频通道（IPC + NVR），读本地缓存（由定时任务 JOB_DH_CHANNEL_REFRESH 刷新）。
+     *  分类树播过种后只返回平台树里有的通道；纯 NVR 编号、解码器/设备名那批不进列表。 */
     public List<Map<String, Object>> listVideoChannels() {
+        List<DahuaDeviceChannelCache> all = channelCacheService.listVideoChannels();
+        boolean anyClassified = all.stream().anyMatch(c -> c.getVideoCategoryId() != null);
         List<Map<String, Object>> out = new ArrayList<>();
-        for (var c : channelCacheService.listVideoChannels()) {
+        for (var c : all) {
+            if (anyClassified && c.getVideoCategoryId() == null) {
+                continue;
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", c.getId());
             m.put("channelCode", c.getChannelCode());

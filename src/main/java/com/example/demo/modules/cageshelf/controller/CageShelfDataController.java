@@ -11,6 +11,8 @@ import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
 import com.example.demo.modules.cageshelf.service.CageShelfLocalAggCache;
+import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
+import com.example.demo.modules.student.service.StudentCageShelfService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,8 @@ public class CageShelfDataController {
     private final CageShelfMapper shelfMapper;
     private final CageSpecialStatusSnapshotMapper snapshotMapper;
     private final CageShelfLocalAggCache localAggCache;
+    private final StudentCageShelfService studentCageShelfService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageShelfDataController(AuthContextService auth,
                                     CageShelfCellSnapshotMapper cellMapper,
@@ -39,7 +43,9 @@ public class CageShelfDataController {
                                     CageShelfRoomBookmarkMapper roomBookmarkMapper,
                                     CageShelfMapper shelfMapper,
                                     CageSpecialStatusSnapshotMapper snapshotMapper,
-                                    CageShelfLocalAggCache localAggCache) {
+                                    CageShelfLocalAggCache localAggCache,
+                                    StudentCageShelfService studentCageShelfService,
+                                    CageVisibilityPolicy visibilityPolicy) {
         this.auth = auth;
         this.cellMapper = cellMapper;
         this.bookmarkMapper = bookmarkMapper;
@@ -47,6 +53,8 @@ public class CageShelfDataController {
         this.shelfMapper = shelfMapper;
         this.snapshotMapper = snapshotMapper;
         this.localAggCache = localAggCache;
+        this.studentCageShelfService = studentCageShelfService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     // ── Cell snapshot ──────────────────────────────────────────────
@@ -91,9 +99,47 @@ public class CageShelfDataController {
     /** GET /api/cage-shelves/full-tree — 全量校区→区域→楼层→房间→笼架树，前端一次拉取无需级联 */
     @GetMapping("/full-tree")
     public Result<?> getFullTree(HttpServletRequest request) {
-        if (resolveUser(request) == null) return Result.fail(401, "未登录");
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
         List<Map<String, Object>> rows = localAggCache.typeCounts();
-        return Result.success(rows == null ? List.of() : rows);
+        if (rows == null) return Result.success(List.of());
+
+        /*
+          特殊状态小圆点必须跟隐私口径走：超管看全量；其他人**只给自己课题组的房间**带状态位
+          （与网格脱敏同源：能看不到的笼位，就不能用「有没有点」反推它的状态）。
+          缓存行要复制后再加字段 —— 否则超管那次请求把状态写进缓存，后面学生请求也会读到。
+        */
+        Set<String> allowedRoomIds = null;
+        if (!visibilityPolicy.isGlobalViewer(user)) {
+            allowedRoomIds = new HashSet<>();
+            for (Map<String, Object> r : studentCageShelfService.roomsForCurrentUser(user)) {
+                Object rid = r == null ? null : r.get("roomId");
+                if (rid != null) allowedRoomIds.add(String.valueOf(rid));
+            }
+        }
+        Map<String, Map<String, Object>> flags = localAggCache.statusFlags();
+        List<Map<String, Object>> out = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> copy = new LinkedHashMap<>(row);
+            copy.remove("needDivide");
+            copy.remove("specialFeeding");
+            copy.remove("animalTransfer");
+            copy.remove("healthAbnormal");
+            copy.remove("cohabitation");
+            boolean visible = allowedRoomIds == null || allowedRoomIds.contains(String.valueOf(row.get("roomId")));
+            if (visible) {
+                Map<String, Object> f = flags.get(String.valueOf(row.get("shelveId")));
+                if (f != null) {
+                    copy.put("needDivide", f.get("needDivide"));
+                    copy.put("specialFeeding", f.get("specialFeeding"));
+                    copy.put("animalTransfer", f.get("animalTransfer"));
+                    copy.put("healthAbnormal", f.get("healthAbnormal"));
+                    copy.put("cohabitation", f.get("cohabitation"));
+                }
+            }
+            out.add(copy);
+        }
+        return Result.success(out);
     }
 
     /** GET /api/cage-shelves/snapshot-batches — 列出所有扫描批次（快照数据源列表） */

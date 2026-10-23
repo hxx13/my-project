@@ -3,6 +3,7 @@ import { ArrowDownToLine, Trash2, X } from "lucide-react";
 import type { CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
 import type { PendingItem } from "../pendingBatch";
 import { BufferChipTile } from "./PendingBufferList";
+import { ItchChip } from "./ItchChip";
 
 /** 一个目标区域：AUP / 人员 / 状态色 */
 export interface BufferZone {
@@ -119,24 +120,12 @@ function ZoneCard({
           <div className="truncate text-[11px] font-semibold text-[var(--twin-ink)]" title={zone.title}>{zone.title}</div>
           {zone.subtitle && <div className="truncate text-[10px] text-[var(--twin-mute)]" title={zone.subtitle}>{zone.subtitle}</div>}
         </div>
-        {/* 右上角勾选框（如「瘙痒」）：pointerdown 必须停住 —— 卡片本身是拖放节点，
-            不停的话点勾选框会被 dnd-kit 当成开始拖拽，卡里笼位跟着乱跑。 */}
+        {/* 右上角瘙痒子值：染色块（点亮 = 本档 + 瘙痒），不用勾选框 */}
         {zone.extraCheck && (
-          <label
-            onPointerDown={(e) => e.stopPropagation()}
-            className="flex shrink-0 cursor-pointer items-center gap-0.5 text-[10px] font-semibold"
-            style={{ color: zone.extraCheck.checked ? color : "var(--twin-mute)" }}
-            title={`勾上 = 「${zone.title}」+ ${zone.extraCheck.label}`}
-          >
-            <input
-              type="checkbox"
-              className="h-3 w-3"
-              style={{ accentColor: color }}
-              checked={zone.extraCheck.checked}
-              onChange={(e) => zone.extraCheck!.onChange(e.target.checked)}
-            />
-            {zone.extraCheck.label}
-          </label>
+          <ItchChip
+            on={zone.extraCheck.checked}
+            onToggle={() => zone.extraCheck!.onChange(!zone.extraCheck!.checked)}
+          />
         )}
         <span className="shrink-0 rounded-full bg-[var(--twin-canvas-soft)] px-1.5 text-[10px] font-semibold text-[var(--twin-mute)]">
           {items.length}

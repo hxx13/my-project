@@ -3,15 +3,12 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo,
 import { MobileMyCageRequestsView } from "./MobileMyCageRequestsView";
 import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Loader2, Search, WifiOff, Scan, AlertCircle, Check, ClipboardList, MapPin, X as XIcon, SplitSquareHorizontal, MoveRight, Clock, Unlock, Star } from "lucide-react";
 import { useMobilePullToRefresh } from "./useMobilePullToRefresh";
+import { useQuery } from "@tanstack/react-query";
 import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import { authHttp } from "@/api/core/authHttp";
 import { cn } from "@/lib/utils";
 import type { CageShelfCell, CageShelfDetail } from "@/api/domains/cageShelf.api";
-import {
-  fetchMobileCageShelvesAll,
-  fetchMobileSpecialStatusOverview,
-  type MobileCageShelfSummary,
-} from "@/api/domains/mobileStudent.api";
+import type { MobileCageShelfSummary } from "@/api/domains/mobileStudent.api";
 import {
   fetchStudentMobileCageShelvesAll,
   fetchStudentMobileSpecialStatusOverview,
@@ -49,6 +46,7 @@ import {
   archiveCage, localArchiveCage, fetchBookingRooms, type BookingRoom,
   fetchPoolCells, type PoolCell, claimCage, fetchMyClaims, type CageClaimItem, cancelClaim,
   type CodeLookupResult, type CageBoxAction, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision,
+  fetchMyGroupRooms,
 } from "@/api/domains/cageShelf.api";
 import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
 import { authStorage } from "@/features/auth/authStorage";
@@ -67,7 +65,6 @@ import {
   HEALTH_SEVERITY_DICT,
   HEALTH_SEVERITY_CANONICAL,
   HEALTH_ITCH_CANONICAL,
-  HEALTH_ITCH_LABEL,
   HEALTH_ITCH_TRUE,
   HEALTH_CHECK_ACTION,
   detailCodesOfValues,
@@ -80,6 +77,7 @@ import {
 } from "@/features/cage-shelf/constants";
 import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import CellStatusBadges from "@/features/cage-shelf/components/CellStatusBadges";
+import { ItchChip } from "@/features/cage-shelf/components/ItchChip";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
 import { buildPlaceholderGridCells } from "./mobileCageShelfGrid";
 import { useViewportHeight } from "./useViewportHeight";
@@ -303,6 +301,93 @@ export function useGridCellWidth(): { ref: React.RefObject<HTMLDivElement | null
     ref,
     style: (px > 0 ? { "--ao-cell-px": `${px}px` } : {}) as React.CSSProperties,
   };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   不可选判定 —— 网格红网纹与点击闸门共用这一份
+   与 PC 管理端 / 学生端同口径：
+   - 分配：活跃认领、待审分笼转移、已被订单预定 → 不可选
+   - 预定：仅 type2，且无活跃认领、无中间态
+   - 状态标记：仅 3/4，且无中间态；学生只能标本人笼位
+   - 归档：仅 type3；学生只能归档本人笼位
+   - 到位确认：只有 locked 可点
+   ═══════════════════════════════════════════════════════════ */
+const ACTIVE_CLAIM_STATUSES = new Set([
+  "pending_approval",
+  "locked",
+  "confirmed",
+  "pending_release_approval",
+]);
+
+const cageIdOfCell = (c: CageShelfCell): string =>
+  String((c as any).id ?? (c as any).animalCageId ?? "");
+
+const cageTypeOfCell = (c: CageShelfCell): number | undefined =>
+  (c as any).cageTypeCode ?? c.animalCageType;
+
+const hasActiveClaimOf = (c: CageShelfCell): boolean =>
+  ACTIVE_CLAIM_STATUSES.has(String((c as any).claimStatus ?? ""));
+
+function allocVerdictOf(
+  c: CageShelfCell,
+  opMarks: Map<string, CageOpMark>,
+): ReturnType<typeof allocSelectVerdict> {
+  if (hasActiveClaimOf(c)) {
+    return { ok: false, reason: "该笼位已有认领在办，不可分配" };
+  }
+  return allocSelectVerdict(cageTypeOfCell(c), opMarks.has(cageIdOfCell(c)));
+}
+
+function reserveVerdictOf(
+  c: CageShelfCell,
+  opMarks: Map<string, CageOpMark>,
+): { ok: boolean; reason: string } {
+  const id = cageIdOfCell(c);
+  if (!id) return { ok: false, reason: "该笼位缺少 ID" };
+  if (cageTypeOfCell(c) !== 2) return { ok: false, reason: "只能选择「已预约空笼盒」状态的笼位" };
+  if (hasActiveClaimOf(c)) return { ok: false, reason: "该笼位已有认领，不可重复选择" };
+  const mark = opMarks.get(id);
+  if (mark) return { ok: false, reason: `${mark.label}，请先等它结束` };
+  return { ok: true, reason: "" };
+}
+
+function editGateReasonOf(
+  c: CageShelfCell,
+  opMarks: Map<string, CageOpMark>,
+  isStaffView: boolean,
+): string | null {
+  const ct = cageTypeOfCell(c);
+  if (ct !== 3 && ct !== 4) return "当前状态不可标记（仅饲养中/异常笼位）";
+  const id = cageIdOfCell(c);
+  if (id && opMarks.has(id)) return "该笼位有进行中的流程，不能标记饲养状态";
+  // confirmed 是已落定的认领（本人正在用），不算中间态
+  const st = String((c as any).claimStatus ?? "");
+  if (["pending_approval", "locked", "pending_release_approval"].includes(st)) {
+    return "该笼位有认领申请在处理中，不能标记饲养状态";
+  }
+  if (!isStaffView && !(c as any).mine) return "只能标记本人使用中的笼位";
+  return null;
+}
+
+function archiveVerdictOf(
+  c: CageShelfCell,
+  isStaffView: boolean,
+): { ok: boolean; reason: string } {
+  if (cageTypeOfCell(c) !== 3) return { ok: false, reason: "该笼位当前无笼盒/未占用，无需归档" };
+  if (!isStaffView && !(c as any).mine) return { ok: false, reason: "只能归档本人使用中的笼位" };
+  return { ok: true, reason: "" };
+}
+
+function confirmVerdictOf(
+  c: CageShelfCell,
+): { ok: boolean; reason: string; success?: boolean } {
+  const status = String((c as any).claimStatus ?? "");
+  if (!status) return { ok: false, reason: "该笼位未分配" };
+  if (status === "locked") return { ok: true, reason: "" };
+  if (status === "confirmed") return { ok: false, reason: "该笼位已到位", success: true };
+  if (status === "pending_approval") return { ok: false, reason: "该笼位待审批" };
+  if (status === "pending_release_approval") return { ok: false, reason: "该笼位待释放审批" };
+  return { ok: false, reason: "该笼位状态：" + status };
 }
 
 export const GridCellButton = memo(function GridCellButton({
@@ -623,6 +708,7 @@ function CageShelfListView({
   error,
   shelves,
   shelfTypeCounts,
+  shelfStatusDots,
   scannedAt,
   onRetry,
   onOpenShelf,
@@ -639,6 +725,8 @@ function CageShelfListView({
   error: string | null;
   shelves: MobileCageShelfSummary[];
   shelfTypeCounts: Record<string, { type1: number; type2: number; type3: number; type4: number }>;
+  /** shelveId / room:<key> → 特殊状态颜色数组 */
+  shelfStatusDots: Record<string, string[]>;
   scannedAt?: string;
   onRetry: () => void;
   onOpenShelf: (shelf: MobileCageShelfSummary) => void;
@@ -652,6 +740,13 @@ function CageShelfListView({
   onOpenMyRecords?: () => void;
   showMyRecordsEntry?: boolean;
 }) {
+  /** 特殊状态小圆点（顺序固定：需分笼→健康异常→动物转移→特殊饲养→合笼） */
+  const StatusDots = ({ list }: { list?: string[] }) =>
+    list && list.length > 0 ? (
+      <span className="flex shrink-0 items-center gap-1">
+        {list.map((c) => <span key={c} className="inline-block size-1.5 rounded-full" style={{ background: c }} />)}
+      </span>
+    ) : null;
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCampuses, setExpandedCampuses] = useState<Record<string, boolean>>({});
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
@@ -734,6 +829,59 @@ function CageShelfListView({
 
   const campusGroups = useMemo(() => buildCampusGroups(filteredShelves), [filteredShelves]);
 
+  /** 顶部快捷区（不受搜索过滤影响）用全量分组 */
+  const allCampusGroups = useMemo(() => buildCampusGroups(shelves), [shelves]);
+
+  /* ── 顶部快捷区：完整复刻 PC 笼架页左侧树的两块快捷区 ──
+     结构：区卡（标题 + 「N 间」）→ 房间行（真实房间，可展开）→ 笼架行。
+     与主列表共用同一个 renderRealRoom，保证行结构与样式完全一致。
+     展开状态走独立的 key 命名空间（q:mine: / q:fav:），点主列表不会把快捷区跟着展开。 */
+
+  /** 把主列表的真实房间（shelfGroups 一层）摊平成快捷区可用的列表 */
+  const realRooms = useMemo(() => {
+    const out: { sg: ShelfGroupEntry }[] = [];
+    for (const cg of allCampusGroups) {
+      for (const room of cg.rooms) {
+        for (const sg of room.shelfGroups) out.push({ sg });
+      }
+    }
+    return out;
+  }, [allCampusGroups]);
+
+  /** 本人课题组房间（与 PC 同源：/my-group-rooms）。接口不可用（token 模式）时回落到笼架 highlight */
+  const meUserId = String(authStorage.getUserInfo()?.id ?? "");
+  const { data: myGroupRooms } = useQuery({
+    queryKey: ["cageShelfMyGroupRooms", meUserId],
+    queryFn: fetchMyGroupRooms,
+    enabled: !!meUserId,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const myRoomIds = useMemo(
+    () => (myGroupRooms ? new Set(myGroupRooms.map((r) => String(r.roomId))) : null),
+    [myGroupRooms],
+  );
+  const quickMyRooms = useMemo(
+    () =>
+      myRoomIds
+        ? realRooms.filter(({ sg }) => {
+            const rid = roomIdOfShelfGroup(sg);
+            return !!rid && myRoomIds.has(rid);
+          })
+        : realRooms.filter(({ sg }) => sg.shelves.some((s) => s.highlight)),
+    [realRooms, myRoomIds, roomIdOfShelfGroup],
+  );
+
+  /** 收藏区域：与 PC 同口径 —— 只收「房间级」收藏（笼架级收藏走「收藏」弹层） */
+  const quickFavRooms = useMemo(
+    () =>
+      realRooms.filter(({ sg }) => {
+        const rid = roomIdOfShelfGroup(sg);
+        return !!rid && favRooms.has(rid);
+      }),
+    [realRooms, favRooms, roomIdOfShelfGroup],
+  );
+
   // 搜素时自动展开匹配结果；清空搜索时收起全部
   useEffect(() => {
     const q = searchQuery.trim();
@@ -803,6 +951,167 @@ function CageShelfListView({
   const clearFilters = () => {
     setSearchQuery("");
   };
+
+  /**
+   * 真实房间（笼架组）行 —— 主列表与顶部两块快捷区**共用这一份**，
+   * 结构与 PC 笼架树的房间节点一致：
+   *   房间行（展开箭头 + 房间名 + 收藏星 + 状态点 + 类型计数 + 进度条 + 架数）
+   *   → 展开后是笼架行（名称 + 收藏星 + 状态点 + 类型计数 + 进度条），点笼架进网格。
+   */
+  const renderRealRoom = (sg: ShelfGroupEntry, expandKey: string) => {
+    const sgExpanded = expandedRooms[expandKey] === true;
+    const sgTotal = sg.shelves.reduce((n, s) => {
+      const ct = shelfTypeCounts[s.shelveId];
+      return n + (ct ? ct.type1 + ct.type2 + ct.type3 + ct.type4 : 0);
+    }, 0);
+    const sgCt = sg.shelves.reduce((agg, s) => {
+      const ct = shelfTypeCounts[s.shelveId];
+      if (ct) { agg.t1+=ct.type1; agg.t2+=ct.type2; agg.t3+=ct.type3; agg.t4+=ct.type4; }
+      return agg;
+    }, {t1:0,t2:0,t3:0,t4:0});
+    return (
+      <div key={expandKey} className="rounded-xl overflow-hidden" style={{
+        borderLeft: sg.hasHighlight ? `5px solid ${ACCENT}` : "5px solid #dde1e8",
+        background: sg.hasHighlight ? "rgba(172,23,54,0.03)" : "#f8f9fc",
+      }}>
+        <button
+          type="button"
+          onClick={() => toggleRoom(expandKey)}
+          className="w-full flex items-center gap-2 px-2.5 py-2 active:bg-black/5"
+        >
+          <div className="flex items-center gap-1.5 min-w-0 flex-shrink-0">
+            {sgExpanded ? (
+              <ChevronDown className="size-3 shrink-0" style={{ color: sg.hasHighlight ? ACCENT : "#969799" }} />
+            ) : (
+              <ChevronRight className="size-3 shrink-0" style={{ color: sg.hasHighlight ? ACCENT : "#969799" }} />
+            )}
+            <span className="text-[11px] font-semibold truncate" style={{ color: sg.hasHighlight ? ACCENT : "#323233" }}>
+              {sg.name}
+            </span>
+            {/* 真实房间名（201A）后面的 ☆：与小程序同粒度 —— 收藏的是这一间，不是「201」那层聚合 */}
+            <span role="button" tabIndex={0}
+              title={sgAllFav(sg) ? "取消收藏这个房间" : "收藏这个房间（收藏里可直达）"}
+              onClick={(e) => { e.stopPropagation(); toggleSgFav(sg); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleSgFav(sg); } }}
+              className="shrink-0 p-0.5"
+              style={{ color: sgAllFav(sg) ? ACCENT : "#cbd5e1" }}>
+              <Star className="size-3.5" fill={sgAllFav(sg) ? ACCENT : "none"} />
+            </span>
+          </div>
+          <div className="flex-1 min-w-0 flex flex-col items-end gap-0.5">
+            {sgTotal > 0 && (
+              <>
+                <div className="flex items-center justify-between gap-1 text-[9px] font-semibold" style={{ width: "70%", alignSelf: "flex-end" }}>
+                  <StatusDots list={Array.from(new Set(sg.shelves.flatMap((x) => shelfStatusDots[String(x.shelveId)] || [])))} />
+                  <span className="ml-auto flex items-center gap-1">
+                  {sgCt.t3 > 0 && <><span style={{color:"#f43f5e"}}>饲{sgCt.t3}</span>{(sgCt.t1>0||sgCt.t4>0||sgCt.t2>0) && <span className="text-[8px]" style={{color:"#c0c4cc"}}>/</span>}</>}
+                  {sgCt.t1 > 0 && <><span style={{color:"#f59e0b"}}>待{sgCt.t1}</span>{(sgCt.t4>0||sgCt.t2>0) && <span className="text-[8px]" style={{color:"#c0c4cc"}}>/</span>}</>}
+                  {sgCt.t4 > 0 && <><span style={{color:"#3b82f6"}}>异{sgCt.t4}</span>{sgCt.t2>0 && <span className="text-[8px]" style={{color:"#c0c4cc"}}>/</span>}</>}
+                  {sgCt.t2 > 0 && <span style={{color:"#10b981"}}>空{sgCt.t2}</span>}
+                  </span>
+                </div>
+                <div className="w-[70%] flex h-1 rounded-full overflow-hidden" style={{background:"#e8eaef"}}>
+                  {sgCt.t3 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(sgCt.t3/sgTotal*100)}%`,background:"#f43f5e"}} />}
+                  {sgCt.t1 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(sgCt.t1/sgTotal*100)}%`,background:"#f59e0b"}} />}
+                  {sgCt.t4 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(sgCt.t4/sgTotal*100)}%`,background:"#3b82f6"}} />}
+                  {sgCt.t2 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(sgCt.t2/sgTotal*100)}%`,background:"#10b981"}} />}
+                </div>
+              </>
+            )}
+          </div>
+          <span className="text-[9px] shrink-0 px-1 py-0.5 rounded-full" style={{color:"#969799",background:"#f2f3f5"}}>
+            {sg.shelves.length}架
+          </span>
+        </button>
+        {sgExpanded && (
+          <div className="grid grid-cols-2 gap-1.5 px-2 pb-2">
+            {sg.shelves.map((s) => {
+              const ct = shelfTypeCounts[s.shelveId];
+              const total = ct ? ct.type1+ct.type2+ct.type3+ct.type4 : 0;
+              return (
+              <button
+                key={s.shelveId}
+                type="button"
+                onClick={() => onOpenShelf(s)}
+                className="rounded-lg px-2.5 py-2 text-left active:scale-[0.98] transition-transform"
+                style={{
+                  background: "#fff",
+                  border: "1px solid #eef0f6",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+                }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[12px] font-semibold truncate shrink-0 leading-snug" style={{maxWidth:"42%", color:"#1e293b"}}>
+                    {s.shelveName || s.shelveId}
+                  </span>
+                  <span role="button" tabIndex={0}
+                    title={favShelves.has(String(s.shelveId)) ? "取消收藏该笼架" : "收藏该笼架（收藏里可直达）"}
+                    onClick={(e) => { e.stopPropagation(); void toggleFavShelf(String(s.roomId ?? ""), String(s.shelveId)); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); void toggleFavShelf(String(s.roomId ?? ""), String(s.shelveId)); } }}
+                    className="shrink-0 p-0.5"
+                    style={{ color: favShelves.has(String(s.shelveId)) ? ACCENT : "#cbd5e1" }}>
+                    <Star className="size-3.5" fill={favShelves.has(String(s.shelveId)) ? ACCENT : "none"} />
+                  </span>
+                  {total > 0 && (
+                    <div className="flex-1 min-w-0 flex flex-col items-end gap-0.5">
+                      <div className="w-full flex items-center justify-between gap-1.5 text-[8px] font-semibold">
+                        <StatusDots list={shelfStatusDots[String(s.shelveId)]} />
+                        <span className="ml-auto flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0">
+                        {ct.type3 > 0 && (
+                          <span style={{color:"#f43f5e"}}>饲{ct.type3}</span>
+                        )}
+                        {ct.type1 > 0 && (
+                          <span style={{color:"#f59e0b"}}>待{ct.type1}</span>
+                        )}
+                        {ct.type4 > 0 && (
+                          <span style={{color:"#3b82f6"}}>异{ct.type4}</span>
+                        )}
+                        {ct.type2 > 0 && (
+                          <span style={{color:"#10b981"}}>空{ct.type2}</span>
+                        )}
+                        </span>
+                      </div>
+                      <div className="w-full flex h-1 rounded-full overflow-hidden" style={{background:"#f2f3f5"}}>
+                        {ct.type3>0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(ct.type3/total*100)}%`,background:"#f43f5e"}} />}
+                        {ct.type1>0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(ct.type1/total*100)}%`,background:"#f59e0b"}} />}
+                        {ct.type4>0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(ct.type4/total*100)}%`,background:"#3b82f6"}} />}
+                        {ct.type2>0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(ct.type2/total*100)}%`,background:"#10b981"}} />}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </button>
+            )})}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /**
+   * 快捷区卡片 —— 结构照 PC：标题 + 「N 间」，房间行与主列表同一套 renderRealRoom，
+   * 无内容时仍保留区卡并给空提示（PC 同样常驻）。
+   */
+  const renderQuickSection = (
+    title: string,
+    emptyHint: string,
+    rooms: { sg: ShelfGroupEntry }[],
+    prefix: string,
+  ) => (
+    <div className="rounded-2xl p-1.5" style={{ background: "#fff", border: "1px solid #eef0f4" }}>
+      <div className="flex items-center justify-between px-1 pb-1">
+        <span className="text-[11px] font-semibold" style={{ color: "#1f2937" }}>{title}</span>
+        <span className="text-[10px]" style={{ color: "#94a3b8" }}>{rooms.length} 间</span>
+      </div>
+      {rooms.length === 0 ? (
+        <div className="px-1 py-1.5 text-[10px] leading-relaxed" style={{ color: "#94a3b8" }}>{emptyHint}</div>
+      ) : (
+        <div className="space-y-1">
+          {rooms.map(({ sg }) => renderRealRoom(sg, `${prefix}${roomIdOfShelfGroup(sg) || sg.key}`))}
+        </div>
+      )}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -974,6 +1283,14 @@ function CageShelfListView({
       )}
 
       <div className="px-3 pt-1 pb-4">
+        {/* 顶部快捷区：复刻 PC 笼架页左侧树的两块快捷区（结构 = 区卡 → 房间行 → 笼架行）。
+            搜索中不画；没有内容也保留区卡并给空提示（与 PC 一致）。 */}
+        {!searchQuery.trim() && (
+          <div className="mb-3 space-y-2">
+            {renderQuickSection("我的区域", "暂无本课题组房间", quickMyRooms, "q:mine:")}
+            {renderQuickSection("收藏区域", "暂无收藏房间，点房间名后的 ☆ 收藏", quickFavRooms, "q:fav:")}
+          </div>
+        )}
         {shelves.length === 0 ? (
           <div className="py-16 text-center">
             <LayoutGrid className="size-10 mx-auto mb-2" style={{ color: "#c8c9cc" }} />
@@ -1065,13 +1382,16 @@ function CageShelfListView({
                                 if (total === 0) return null;
                                 return (
                                   <>
-                                    <div className="flex items-center gap-1.5 text-[10px] font-semibold">
+                                    <div className="flex items-center justify-between gap-1.5 text-[10px] font-semibold" style={{ width: "90%", alignSelf: "flex-end" }}>
+                                      <StatusDots list={shelfStatusDots[`room:${group.key}`]} />
+                                      <span className="flex items-center gap-1.5">
                                       {roomCt.type3 > 0 && <><span style={{color:"#f43f5e"}}>饲{roomCt.type3}</span>{(roomCt.type1>0||roomCt.type4>0||roomCt.type2>0) && <span className="text-[9px]" style={{color:"#c0c4cc"}}>/</span>}</>}
                                       {roomCt.type1 > 0 && <><span style={{color:"#f59e0b"}}>待{roomCt.type1}</span>{(roomCt.type4>0||roomCt.type2>0) && <span className="text-[9px]" style={{color:"#c0c4cc"}}>/</span>}</>}
                                       {roomCt.type4 > 0 && <><span style={{color:"#3b82f6"}}>异{roomCt.type4}</span>{roomCt.type2>0 && <span className="text-[9px]" style={{color:"#c0c4cc"}}>/</span>}</>}
                                       {roomCt.type2 > 0 && <span style={{color:"#10b981"}}>空{roomCt.type2}</span>}
+                                      </span>
                                     </div>
-                                    <div className="w-[90%] flex h-2.5 rounded-full overflow-hidden" style={{background:"#f2f3f5"}}>
+                                    <div className="w-[90%] flex h-1.5 rounded-full overflow-hidden" style={{background:"#f2f3f5"}}>
                                       {roomCt.type3 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(roomCt.type3/total*100)}%`,background:"#f43f5e"}} />}
                                       {roomCt.type1 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(roomCt.type1/total*100)}%`,background:"#f59e0b"}} />}
                                       {roomCt.type4 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(roomCt.type4/total*100)}%`,background:"#3b82f6"}} />}
@@ -1131,13 +1451,16 @@ function CageShelfListView({
                                       <div className="flex-1 min-w-0 flex flex-col items-end gap-0.5">
                                         {sgTotal > 0 && (
                                           <>
-                                            <div className="flex items-center gap-1 text-[9px] font-semibold">
+                                            <div className="flex items-center justify-between gap-1 text-[9px] font-semibold" style={{ width: "70%", alignSelf: "flex-end" }}>
+                                              <StatusDots list={Array.from(new Set(sg.shelves.flatMap((x) => shelfStatusDots[String(x.shelveId)] || [])))} />
+                                              <span className="ml-auto flex items-center gap-1">
                                               {sgCt.t3 > 0 && <><span style={{color:"#f43f5e"}}>饲{sgCt.t3}</span>{(sgCt.t1>0||sgCt.t4>0||sgCt.t2>0) && <span className="text-[8px]" style={{color:"#c0c4cc"}}>/</span>}</>}
                                               {sgCt.t1 > 0 && <><span style={{color:"#f59e0b"}}>待{sgCt.t1}</span>{(sgCt.t4>0||sgCt.t2>0) && <span className="text-[8px]" style={{color:"#c0c4cc"}}>/</span>}</>}
                                               {sgCt.t4 > 0 && <><span style={{color:"#3b82f6"}}>异{sgCt.t4}</span>{sgCt.t2>0 && <span className="text-[8px]" style={{color:"#c0c4cc"}}>/</span>}</>}
                                               {sgCt.t2 > 0 && <span style={{color:"#10b981"}}>空{sgCt.t2}</span>}
+                                              </span>
                                             </div>
-                                            <div className="w-[70%] flex h-2 rounded-full overflow-hidden" style={{background:"#e8eaef"}}>
+                                            <div className="w-[70%] flex h-1 rounded-full overflow-hidden" style={{background:"#e8eaef"}}>
                                               {sgCt.t3 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(sgCt.t3/sgTotal*100)}%`,background:"#f43f5e"}} />}
                                               {sgCt.t1 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(sgCt.t1/sgTotal*100)}%`,background:"#f59e0b"}} />}
                                               {sgCt.t4 > 0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(sgCt.t4/sgTotal*100)}%`,background:"#3b82f6"}} />}
@@ -1185,34 +1508,25 @@ function CageShelfListView({
                                               {total > 0 && (
                                                 <div className="flex-1 min-w-0 flex flex-col items-end gap-0.5">
                                                   {/* 图例行：彩色圆点 + 标签 + 数字 */}
-                                                  <div className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0 text-[8px] font-semibold">
+                                                  <div className="w-full flex items-center justify-between gap-1.5 text-[8px] font-semibold">
+                                                    <StatusDots list={shelfStatusDots[String(s.shelveId)]} />
+                                                    <span className="ml-auto flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0">
                                                     {ct.type3 > 0 && (
-                                                      <span className="inline-flex items-center gap-0.5" style={{color:"#969799"}}>
-                                                        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{background:"#f43f5e"}} />
-                                                        饲养{ct.type3}
-                                                      </span>
+                                                      <span style={{color:"#f43f5e"}}>饲{ct.type3}</span>
                                                     )}
                                                     {ct.type1 > 0 && (
-                                                      <span className="inline-flex items-center gap-0.5" style={{color:"#969799"}}>
-                                                        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{background:"#f59e0b"}} />
-                                                        待{ct.type1}
-                                                      </span>
+                                                      <span style={{color:"#f59e0b"}}>待{ct.type1}</span>
                                                     )}
                                                     {ct.type4 > 0 && (
-                                                      <span className="inline-flex items-center gap-0.5" style={{color:"#969799"}}>
-                                                        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{background:"#3b82f6"}} />
-                                                        异{ct.type4}
-                                                      </span>
+                                                      <span style={{color:"#3b82f6"}}>异{ct.type4}</span>
                                                     )}
                                                     {ct.type2 > 0 && (
-                                                      <span className="inline-flex items-center gap-0.5" style={{color:"#969799"}}>
-                                                        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{background:"#10b981"}} />
-                                                        空{ct.type2}
-                                                      </span>
+                                                      <span style={{color:"#10b981"}}>空{ct.type2}</span>
                                                     )}
+                                                    </span>
                                                   </div>
                                                   {/* 进度条 */}
-                                                  <div className="w-full flex h-1.5 rounded-full overflow-hidden" style={{background:"#f2f3f5"}}>
+                                                  <div className="w-full flex h-1 rounded-full overflow-hidden" style={{background:"#f2f3f5"}}>
                                                     {ct.type3>0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(ct.type3/total*100)}%`,background:"#f43f5e"}} />}
                                                     {ct.type1>0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(ct.type1/total*100)}%`,background:"#f59e0b"}} />}
                                                     {ct.type4>0 && <div className="h-full min-w-[2px]" style={{width:`${Math.round(ct.type4/total*100)}%`,background:"#3b82f6"}} />}
@@ -1770,9 +2084,7 @@ export type MobileCageShelfTabHandle = {
 };
 
 interface MobileCageShelfTabProps {
-  token: string;
-  jwtMode?: boolean;
-  /** ADMIN+ 手机特权；token 模式由 mobile-center profile 注入 */
+  /** ADMIN+ 手机特权 */
   html5PrivilegeBypass?: boolean;
   onScreenChange?: (screen: "list" | "grid", shelfTitle?: string) => void;
   /** 扫码跳转目标：设置后自动打开对应笼架网格并高亮指定笼位 */
@@ -1781,7 +2093,7 @@ interface MobileCageShelfTabProps {
 }
 
 export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
-  function MobileCageShelfTab({ token, jwtMode, html5PrivilegeBypass = false, onScreenChange, jumpTarget, onJumpConsumed }, ref) {
+  function MobileCageShelfTab({ html5PrivilegeBypass = false, onScreenChange, jumpTarget, onJumpConsumed }, ref) {
   const [screen, setScreen] = useState<"list" | "grid">("list");
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -1790,6 +2102,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [listReloadKey, setListReloadKey] = useState(0);
 
   const [shelfTypeCounts, setShelfTypeCounts] = useState<Record<string, { type1: number; type2: number; type3: number; type4: number }>>({});
+  /** shelveId / room:<key> → 特殊状态颜色数组（与小程序列表小圆点同色同序） */
+  const [shelfStatusDots, setShelfStatusDots] = useState<Record<string, string[]>>({});
   const [selectedShelf, setSelectedShelf] = useState<MobileCageShelfSummary | null>(null);
   const [detail, setDetail] = useState<CageShelfDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -1938,24 +2252,17 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   }, [listReloadKey, detailReloadKey]);
 
   const specialStatusApiFn = useCallback(() => {
-    return jwtMode
-      ? fetchStudentMobileSpecialStatusOverview()
-      : fetchMobileSpecialStatusOverview(token);
-  }, [jwtMode, token]);
+    return fetchStudentMobileSpecialStatusOverview();
+  }, []);
 
   useEffect(() => {
-    if (!jwtMode && !token) return;
     setListLoading(true);
     setListError(null);
 
-    const shelfPromise = jwtMode
-      ? fetchStudentMobileCageShelvesAll()
-      : fetchMobileCageShelvesAll(token!);
+    const shelfPromise = fetchStudentMobileCageShelvesAll();
 
-    // JWT 模式并行调用 full-tree（对齐小程序：不受快照有无影响，从网格表获取 type1~4）
-    const treePromise = jwtMode
-      ? fetchFullTree().catch(() => [] as any[])
-      : Promise.resolve([] as any[]);
+    // 并行调用 full-tree（对齐小程序：不受快照有无影响，从网格表获取 type1~4）
+    const treePromise = fetchFullTree().catch(() => [] as any[]);
 
     Promise.all([shelfPromise, treePromise])
       .then(([d, treeRows]) => {
@@ -1965,9 +2272,11 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
         // 从 full-tree 构建类型计数索引（网格表兜底）
         const treeMap: Record<string, { type1: number; type2: number; type3: number; type4: number }> = {};
+        const flagsBySid: Record<string, any> = {};
         const idxMap: Record<string, number> = {};
         for (const row of treeRows) {
           if (row.shelveId) {
+            flagsBySid[String(row.shelveId)] = row;
             treeMap[String(row.shelveId)] = {
               type1: Number((row as any).type1 ?? 0),
               type2: Number((row as any).type2 ?? 0),
@@ -2000,13 +2309,38 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         }
         for (const [rk, c] of Object.entries(roomAgg)) { map[`room:${rk}`] = c; }
         setShelfTypeCounts(map);
+
+        // 特殊状态小圆点：顺序固定（需分笼→健康异常→动物转移→特殊饲养→合笼）
+        const dotsOf = (ft: Record<string, unknown> | undefined) => {
+          const out: string[] = [];
+          if (Number((ft as any)?.needDivide) > 0) out.push("#eab308");
+          if (Number((ft as any)?.healthAbnormal) > 0) out.push("#a855f7");
+          if (Number((ft as any)?.animalTransfer) > 0) out.push("#06b6d4");
+          if (Number((ft as any)?.specialFeeding) > 0) out.push("#ef4444");
+          if (Number((ft as any)?.cohabitation) > 0) out.push("#10b981");
+          return out;
+        };
+        const dotsMap: Record<string, string[]> = {};
+        const roomDots: Record<string, Set<string>> = {};
+        for (const s of list) {
+          const sid = String(s.shelveId ?? "");
+          const dots = dotsOf(flagsBySid[sid]);
+          dotsMap[sid] = dots;
+          const rk = `${s.campusName || "其他"}::${extractParentRoomKey(s.roomName || "其他")}`;
+          if (!roomDots[rk]) roomDots[rk] = new Set();
+          dots.forEach((c) => roomDots[rk].add(c));
+        }
+        for (const [rk, set] of Object.entries(roomDots)) {
+          dotsMap[`room:${rk}`] = Array.from(set);
+        }
+        setShelfStatusDots(dotsMap);
       })
       .catch((e) => setListError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setListLoading(false));
-  }, [token, jwtMode, listReloadKey]);
+  }, [listReloadKey]);
 
   useEffect(() => {
-    if ((!jwtMode && !token) || !selectedShelf || screen !== "grid") return;
+    if (!selectedShelf || screen !== "grid") return;
     setDetailLoading(true);
     setDetailError(null);
     setDetail(null);
@@ -2015,7 +2349,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       .then((d) => { setDetail(d); })
       .catch((e) => { console.error('[detail] error:', e); setDetailError(e instanceof Error ? e.message : "加载笼架详情失败"); })
       .finally(() => setDetailLoading(false));
-  }, [token, jwtMode, selectedShelf, screen, detailReloadKey, editMode]);
+  }, [selectedShelf, screen, detailReloadKey, editMode]);
 
   const openShelf = (shelf: MobileCageShelfSummary) => {
     setSelectedShelf(shelf);
@@ -2251,52 +2585,27 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   }, [detail, opSel.selected]);
 
   /**
-   * 「不可选」网纹的原因表：当前模式下**点不了**的笼位 → 短标签（空串 = 只盖网纹不出字）。
-   * 逐条对着下面那几个 handleXxxToggle 抄 —— 网纹说不能点、点下去却成功，是最伤信任的一类不一致。
-   * 理由与 PC 管理端同一套：只有「原因对用户没有增量信息」的那类（申请池外）才只盖网纹。
+   * 「不可选」网纹的原因表：当前模式下**点不了**的笼位 → 只盖网纹、不挂底部文字。
+   * 判定与下面各 handleXxxToggle **共用同一组 verdict**（见文件顶部的不可选判定），
+   * 与 PC 管理端的网格口径一致；完整原因点下去仍由各模式的 toast 给出。
    * 查看/记录/预约没有「可选格」，返回 undefined = 不画；分笼/转移选位自带池高亮，也不画。
    */
   const disabledReasonByCageId = useMemo(() => {
     if (mode === "view" || mode === "record" || mode === "booking" || opActive) return undefined;
-    const labelOf = (c: CageShelfCell): string | null => {
-      const ct = (c as any).cageTypeCode ?? c.animalCageType;
-      const st = (c as any).claimStatus;
-      const id = String((c as any).id ?? (c as any).animalCageId ?? "");
-      const claimBusy = !!st && ["pending_approval", "locked", "confirmed", "pending_release_approval"].includes(st);
-      // 带中间态标记的格子自带色条在命名状态，标签由 GridCellButton 统一丢掉，这里不用特判
-      if (mode === "allocate") {
-        if (allocSelectVerdict(ct, opMarks.has(id)).ok) return null;
-        return ct === 3 || ct === 4 ? "需先归档" : "状态未知";
-      }
-      if (mode === "reserve") {
-        if (claimBusy) return "已有预定";
-        return ct === 2 ? null : "非空笼盒";
-      }
-      if (mode === "claim") return poolCells.has(id) ? null : "";
-      if (mode === "division") return ct === 1 ? "待分配" : null;
-      if (mode === "archive") {
-        if (ct !== 3) return "无需归档";
-        return !isStaffView && !(c as any).mine ? "非本人" : null;
-      }
-      if (mode === "edit") {
-        if (ct !== 3 && ct !== 4) return "不可标记";
-        return !isStaffView && !(c as any).mine ? "非本人" : null;
-      }
-      if (mode === "confirm") {
-        if (!st) return "未分配";
-        if (st === "confirmed") return "已到位";
-        if (st === "pending_approval") return "待审批";
-        if (st === "pending_release_approval") return "待释放";
-        return String(st);
-      }
-      return null;
+    const blockedOf = (c: CageShelfCell): boolean => {
+      if (mode === "allocate") return !allocVerdictOf(c, opMarks).ok;
+      if (mode === "reserve") return !reserveVerdictOf(c, opMarks).ok;
+      if (mode === "claim") return !poolCells.has(cageIdOfCell(c));
+      if (mode === "division") return cageTypeOfCell(c) === 1;
+      if (mode === "archive") return !archiveVerdictOf(c, isStaffView).ok;
+      if (mode === "edit") return editGateReasonOf(c, opMarks, isStaffView) !== null;
+      if (mode === "confirm") return !confirmVerdictOf(c).ok;
+      return false;
     };
     const m = new Map<string, string>();
     for (const c of detail?.grid ?? []) {
-      const id = String((c as any).id ?? (c as any).animalCageId ?? "");
-      if (!id) continue;
-      const label = labelOf(c);
-      if (label !== null) m.set(id, label);
+      const id = cageIdOfCell(c);
+      if (id && blockedOf(c)) m.set(id, "");
     }
     return m;
   }, [mode, opActive, detail, opMarks, poolCells, isStaffView]);
@@ -2313,7 +2622,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       const x = parseInt(parts[1]), y = parseInt(parts[2]);
       const c = detail?.grid?.find((g) => g.x === x && g.y === y);
       if (!c) continue;
-      const v = allocSelectVerdict((c as any).cageTypeCode ?? c.animalCageType, opMarks.has(String((c as any).id ?? (c as any).animalCageId ?? "")));
+      const v = allocVerdictOf(c, opMarks);
       if (v.ok) return v.kind;
     }
     return null;
@@ -2324,24 +2633,20 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     const key = `${currentSid}:${cell.x}:${cell.y}`;
     // 已选中的再点一次是取消勾选，不必再过闸门
     if (!selectedCells.has(key)) {
-      const v = allocSelectVerdict((cell as any).cageTypeCode ?? cell.animalCageType, opMarks.has(String((cell as any).id ?? (cell as any).animalCageId ?? "")));
+      const v = allocVerdictOf(cell, opMarks);
       if (!v.ok) { toast(v.reason); return; }
       if (allocBatchKind !== null && v.kind !== allocBatchKind) { toast(ALLOC_MIXED_KIND_HINT); return; }
     }
     setSelectedCells((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  }, [currentSid, selectedCells, allocBatchKind]);
+  }, [currentSid, selectedCells, allocBatchKind, opMarks]);
 
-  // 认领（教职工）：仅 cageTypeCode===2 且无活跃认领
+  // 认领（教职工）：仅 cageTypeCode===2、无活跃认领、无待审分笼/转移/订单预定
   const handleReserveToggle = useCallback((cell: CageShelfCell) => {
-    const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
-    const status = (cell as any).claimStatus;
-    if (ct !== 2) { toast("只能选择「已预约空笼盒」状态的笼位"); return; }
-    if (status && ["pending_approval", "locked", "confirmed", "pending_release_approval"].includes(status)) {
-      toast("该笼位已有预定，不可重复选择"); return;
-    }
+    const v = reserveVerdictOf(cell, opMarks);
+    if (!v.ok) { toast(v.reason); return; }
     const key = `${currentSid}:${cell.x}:${cell.y}`;
     setSelectedCells((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  }, [currentSid]);
+  }, [currentSid, opMarks]);
 
   // 学生申请：仅池内
   const handleClaimToggle = useCallback((cell: CageShelfCell) => {
@@ -2365,50 +2670,45 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     setSelectedCells((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   }, [currentSid]);
 
-  // 扫码确认：点格子 → 开核对弹窗（仅 locked）
+  // 扫码确认：点格子 → 开核对弹窗（仅 locked；与网格不可选网纹同一判定）
   const handleConfirmCell = useCallback((cell: CageShelfCell) => {
-    const status = (cell as any).claimStatus;
-    const claimId = (cell as any).activeClaimId;
-    if (!status) { toast.error("该笼位未分配"); return; }
-    if (status === "locked" && claimId) {
-      setConfirmLookup({
-        type: "CAGE_CELL",
-        cageCell: {
-          animalCageId: String((cell as any).id ?? (cell as any).animalCageId ?? ""),
-          positionLabel: displayPosition(cell.position),
-          positionX: cell.x,
-          positionY: cell.y,
-          campusName: "",
-          roomName: "",
-          shelveId: currentSid,
-        } as any,
-        claim: {
-          id: Number(claimId),
-          claimStatus: status,
-          claimantId: "",
-          claimantName: (cell as any).occupantName ?? "",
-          projectPiName: (cell as any).projectPiName ?? "",
-          aupNumber: (cell as any).aupNumber ?? (cell as any).detail?.aupNumber ?? "",
-          projectName: (cell as any).projectGroup ?? "",
-          hasInfo: true,
-        } as any,
-      });
+    const v = confirmVerdictOf(cell);
+    if (!v.ok) {
+      if (v.success) toast.success(v.reason); else toast.error(v.reason);
       return;
     }
-    if (status === "confirmed") { toast.success("该笼位已到位"); return; }
-    if (status === "pending_approval") { toast.error("该笼位待审批"); return; }
-    if (status === "pending_release_approval") { toast.error("该笼位待释放审批"); return; }
-    toast.error("该笼位状态：" + status);
+    const claimId = (cell as any).activeClaimId;
+    if (!claimId) { toast.error("该笼位缺少认领信息"); return; }
+    setConfirmLookup({
+      type: "CAGE_CELL",
+      cageCell: {
+        animalCageId: cageIdOfCell(cell),
+        positionLabel: displayPosition(cell.position),
+        positionX: cell.x,
+        positionY: cell.y,
+        campusName: "",
+        roomName: "",
+        shelveId: currentSid,
+      } as any,
+      claim: {
+        id: Number(claimId),
+        claimStatus: "locked",
+        claimantId: "",
+        claimantName: (cell as any).occupantName ?? "",
+        projectPiName: (cell as any).projectPiName ?? "",
+        aupNumber: (cell as any).aupNumber ?? (cell as any).detail?.aupNumber ?? "",
+        projectName: (cell as any).projectGroup ?? "",
+        hasInfo: true,
+      } as any,
+    });
   }, [currentSid]);
 
-  // 归档：仅 cageTypeCode===3
+  // 归档：仅 cageTypeCode===3，学生只能归本人（与网格不可选网纹同一判定）
   const handleArchiveCell = useCallback((cell: CageShelfCell) => {
-    const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
-    if (ct !== 3) { toast.error("该笼位当前无笼盒/未占用，无需归档"); return; }
-    // 学生只能归档本人占用的笼位（mine 由后端判定并下发；教职工视角不下发该字段）
-    if (!isStaffView && !(cell as any).mine) { toast.error("只能归档本人使用中的笼位"); return; }
+    const v = archiveVerdictOf(cell, isStaffView);
+    if (!v.ok) { toast.error(v.reason); return; }
     setArchiveTarget({
-      animalCageId: String((cell as any).id ?? (cell as any).animalCageId ?? ""),
+      animalCageId: cageIdOfCell(cell),
       positionLabel: displayPosition(cell.position),
       occupantName: (cell as any).occupantName,
       projectPiName: (cell as any).projectPiName ?? (cell as any).detail?.projectPiName,
@@ -2424,13 +2724,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
   const handleCellClick = (cell: CageShelfCell) => {
     if (cell.empty) return;
-    // 编辑模式：点击单元格 → 打开 action popup（仅 cageTypeCode 3/4 可编辑）
+    // 编辑模式：点击单元格 → 打开 action popup（准入与扫码/网纹共用 editGateReasonOf）
     if (mode === "edit") {
-      const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
-      if (ct !== 3 && ct !== 4) { toast.error("该笼位不可标记状态"); return; }
-      // 学生视角再叠一层归属：只能标本人使用中的笼位。mine 由后端 markMine 判定
-      // （认领人是本人 或 表单实验员是本人，双 id 已在服务端折叠），前端不自己比姓名。
-      if (!isStaffView && !cell.mine) { toast.error("只能标记本人使用中的笼位"); return; }
+      const reason = editGateReasonOf(cell, opMarks, isStaffView);
+      if (reason) { toast.error(reason); return; }
       openEditActionPopup(cell);
       return;
     }
@@ -2534,19 +2831,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     const matched = detail.grid.find((c: any) => c.x === p.x && c.y === p.y);
     if (!matched) { toast.error(`当前笼架未找到坐标 (${p.x},${p.y})`); return; }
     const key = `${matched.x}:${matched.y}`;
-    const cageId = String((matched as any).id ?? (matched as any).animalCageId ?? "");
-    // 状态标记只对「饲养中/异常」开放（与 Web 管理端同一口径）：空笼位/等待分配没有动物可标记。
-    const editCt = (matched as any).cageTypeCode ?? (matched as any).animalCageType;
-    if (editCt !== 3 && editCt !== 4) { toast.error("当前状态不可标记（仅饲养中/异常笼位）"); return; }
-    // 扫码路径同样要过学生归属闸门（与点击路径同口径）
-    if (!isStaffView && !(matched as any).mine) { toast.error("只能标记本人使用中的笼位"); return; }
-    // 笼位还在中间态时也不能标记：预定/已下单待审/分笼转移在审都在 opMarks 里，认领在审看 claimStatus。
-    if (cageId && opMarks.has(cageId)) { toast.error("该笼位有进行中的流程，不能标记饲养状态"); return; }
-    if (["pending_approval", "locked", "confirmed", "pending_release_approval"]
-          .includes(String((matched as any).claimStatus ?? ""))) {
-      toast.error("该笼位有认领申请在处理中，不能标记饲养状态");
-      return;
-    }
+    const cageId = cageIdOfCell(matched);
+    // 扫码与点击、网格网纹共用同一道准入（仅 3/4、无中间态、学生限本人）
+    const gateReason = editGateReasonOf(matched, opMarks, isStaffView);
+    if (gateReason) { toast.error(gateReason); return; }
     // 状态标记以表单为真相源：先拉表单值再建缓存条目
     let preActions = new Set<CageBoxAction>();
     if (cageId) {
@@ -2980,6 +3268,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             error={listError}
             shelves={shelves}
             shelfTypeCounts={shelfTypeCounts}
+            shelfStatusDots={shelfStatusDots}
             scannedAt={scannedAt}
             onRetry={() => setListReloadKey((k) => k + 1)}
             onOpenShelf={openShelf}
@@ -3062,6 +3351,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         {selectedCell && selectedShelf && mode === "view" && (
           <MobileCageCellDetailDialog
             cell={selectedCell}
+            shelfName={selectedShelf?.shelveName ?? ""}
             onClose={() => setSelectedCell(null)}
             staffView={isStaffView}
             onStartOp={(k, s) => { setSelectedCell(null); void opSel.start(k, s); }}
@@ -3142,7 +3432,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             >
               <div className="flex items-center justify-between px-4 py-3 border-b shrink-0" style={{ borderColor: "#ebedf0" }}>
                 <span className="text-sm font-bold" style={{ color: "#323233" }}>
-                  {displayPosition(editActionCell.position)}
+                  {selectedShelf?.shelveName ? `${selectedShelf.shelveName} ` : ""}{displayPosition(editActionCell.position)}
                 </span>
                 {/* 走与点遮罩一致的保存后关闭，否则从 X 退出会丢掉刚上传的照片 */}
                 <button type="button" onClick={saveAndCloseActionPopup} className="p-1 rounded-lg">
@@ -3266,31 +3556,28 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                     <div className="rounded-md px-2.5 py-2" style={{ border: '1.5px solid #ebedf0' }}>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[11px] font-semibold" style={{ color: '#323233' }}>健康异常严重程度</span>
-                        <span className="text-[10px]" style={{ color: '#969799' }}>单选 · 可勾瘙痒 · 随「健康异常」开关</span>
+                        <span className="text-[10px]" style={{ color: '#969799' }}>单选 · 可加瘙痒 · 随「健康异常」开关</span>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {severityOptions.map((o) => {
                           const on = cur === o.itemCode;
                           return (
-                            <div key={o.itemCode} className="relative rounded-md px-2.5 py-1"
-                              style={{ border: `1.5px solid ${on ? ACCENT : "#cbd5e1"}` }}>
+                            <div key={o.itemCode} className="flex items-center gap-2 rounded-md px-2.5 py-1 transition-colors"
+                              style={{
+                                border: `1.5px solid ${on ? ACCENT : "#cbd5e1"}`,
+                                background: on ? ACCENT : "#fff",
+                              }}>
                               <button type="button"
                                 onClick={() => setMobileSeverity(editActionCell, on ? null : o.itemCode, on ? false : curItch)}
-                                className="text-[11px] font-semibold active:scale-[0.98] transition flex items-center justify-center gap-1"
-                                style={{ color: on ? ACCENT : '#94a3b8' }}>
-                                {on && <Check className="size-3" strokeWidth={3} />}
+                                className="text-[11px] font-semibold active:scale-[0.98] transition"
+                                style={{ color: on ? "#fff" : '#94a3b8' }}>
                                 <span className="truncate">{o.itemLabel}</span>
                               </button>
-                              {/* 勾选框贴在本档右上角：勾上 = 该档 + 瘙痒 */}
-                              <label className="absolute -right-1.5 -top-2 flex cursor-pointer items-center gap-0.5 rounded-full border bg-white px-1 text-[9px] font-semibold"
-                                style={{ borderColor: '#ebedf0', color: (on && curItch) ? ACCENT : '#94a3b8' }}
-                                title={`勾上 = ${o.itemLabel} + ${HEALTH_ITCH_LABEL}`}>
-                                <input type="checkbox" className="h-2.5 w-2.5"
-                                  style={{ accentColor: ACCENT }}
-                                  checked={on && curItch}
-                                  onChange={() => setMobileSeverity(editActionCell, o.itemCode, !(on && curItch))} />
-                                {HEALTH_ITCH_LABEL}
-                              </label>
+                              {/* 瘙痒贴在同一行：点亮 = 该档 + 瘙痒（染色块，不用勾选框） */}
+                              <ItchChip
+                                on={on && curItch}
+                                onToggle={() => setMobileSeverity(editActionCell, o.itemCode, !(on && curItch))}
+                              />
                             </div>
                           );
                         })}

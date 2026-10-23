@@ -1,14 +1,10 @@
-/** 手机版 — 申领 Tab（布局对齐小程序 studentMaterial，数据走学生中心 token API） */
+/** 手机版 — 申领 Tab（布局对齐小程序 studentMaterial） */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, WifiOff, ChevronLeft, X, Copy, ExternalLink, Check, Clock, Pencil } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import type { CSSProperties } from "react";
+import { Loader2, WifiOff, ChevronLeft, X, Clock, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
-import {
-  fetchMobileMaterials,
-  submitMobileMaterialRequest,
-  type MobileMaterialsData,
-} from "@/api/domains/mobileStudent.api";
+import type { MobileMaterialsData } from "@/api/domains/mobileStudent.api";
 import {
   fetchStudentMobileMaterials,
   submitStudentMobileMaterialRequest,
@@ -38,28 +34,38 @@ import { useCartSync } from "@/hooks/useCartSync";
 import { cartAdd, cartSetQty } from "@/utils/cartMath";
 
 import { appConfirm } from "@/lib/appDialog";
-/* ---- localStorage 购物车（学生中心 token / JWT） ---- */
+/** 小程序同款配色：覆盖本 Tab 作用域内的 --student-* 令牌 */
+const MM_THEME: CSSProperties = {
+  "--student-primary": "#2563eb",
+  "--student-primary-foreground": "#ffffff",
+  "--student-primary-hover": "#1d4ed8",
+  "--student-primary-pressed": "#1e40af",
+  "--student-primary-muted": "rgba(37,99,235,0.14)",
+  "--student-canvas": "#eef0f6",
+  "--student-canvas-soft": "#f6f7fb",
+  "--student-canvas-soft-2": "#f1f3f7",
+  "--student-surface": "#ffffff",
+  "--student-surface-raised": "#ffffff",
+  "--student-hairline": "#eef0f4",
+  "--student-ink": "#1e293b",
+  "--student-body": "#334155",
+  "--student-mute": "#64748b",
+  "--student-danger": "#ef4444",
+} as CSSProperties;
+
+/* ---- localStorage 购物车 ---- */
 const JWT_CART_KEY = "mobile_material_cart_jwt";
 
-function buildGeneralModeUrl() {
-  return `${window.location.origin}/#/m/login`;
+function loadCart(): Record<string, number> {
+  return loadPersistedCart(JWT_CART_KEY);
 }
 
-function cartStorageKey(token: string, jwtMode?: boolean) {
-  if (jwtMode) return JWT_CART_KEY;
-  return `mobile_material_cart_${token.slice(0, 8)}`;
+function persistCartForTab(cart: Record<string, number>) {
+  persistCart(JWT_CART_KEY, cart);
 }
 
-function loadCart(token: string, jwtMode?: boolean): Record<string, number> {
-  return loadPersistedCart(cartStorageKey(token, jwtMode));
-}
-
-function persistCartForTab(token: string, cart: Record<string, number>, jwtMode?: boolean) {
-  persistCart(cartStorageKey(token, jwtMode), cart);
-}
-
-function clearCartStorage(token: string, jwtMode?: boolean) {
-  localStorage.removeItem(cartStorageKey(token, jwtMode));
+function clearCartStorage() {
+  localStorage.removeItem(JWT_CART_KEY);
 }
 
 function mapRequestRow(r: MaterialRequest) {
@@ -87,7 +93,7 @@ const REQUEST_STATUS_FILTERS = [
   { label: "已完成", value: "RECEIVED" },
 ];
 
-export default function MobileMaterialTab({ token, jwtMode }: { token: string; jwtMode?: boolean }) {
+export default function MobileMaterialTab() {
   const [matData, setMatData] = useState<MobileMaterialsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +104,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
   /* ── 购物车写回标准件：最新态 ref + 串行持久化（全端共享 useCartSync） ── */
   const sync = useCartSync({
-    commit: (next) => persistCartForTab(token, next, jwtMode),
+    commit: (next) => persistCartForTab(next),
     mode: "serialize",
   });
   /** 统一变更入口：更新渲染态 + 最新态 + 持久化（同一 tick 多次变更基于最新态累加）。 */
@@ -120,30 +126,23 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
   const [showRequests, setShowRequests] = useState(false);
   const [requestStatusFilter, setRequestStatusFilter] = useState("");
-  const [showModeDialog, setShowModeDialog] = useState(true);
-  const [modeLinkCopied, setModeLinkCopied] = useState(false);
 
-  const generalModeUrl = buildGeneralModeUrl();
   const load = useCallback(() => {
-    if (!jwtMode && !token) return;
     setLoading(true);
     setError(null);
-    (jwtMode
-      ? fetchStudentMobileMaterials()
-      : fetchMobileMaterials(token!)
-    )
+    fetchStudentMobileMaterials()
       .then((d) => {
         setMatData(d);
         const decorated = decorateMaterialItems(d.items ?? []);
-        const local = loadCart(token!, jwtMode);
+        const local = loadCart();
         const reconciled = reconcileCartWithStock(local, decorated);
-        if (reconciled !== local) persistCartForTab(token!, reconciled, jwtMode);
+        if (reconciled !== local) persistCartForTab(reconciled);
         setCart(reconciled);
         sync.setLatest(reconciled);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
-  }, [token, jwtMode, sync.setLatest]);
+  }, [sync.setLatest]);
 
   useEffect(() => {
     load();
@@ -315,13 +314,9 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     setSubmitting(true);
     setConfirmOpen(false);
     try {
-      if (jwtMode) {
-        await submitStudentMobileMaterialRequest(lines, undefined, pickupTime ?? null);
-      } else {
-        await submitMobileMaterialRequest(token, lines, undefined, pickupTime ?? null);
-      }
+      await submitStudentMobileMaterialRequest(lines, undefined, pickupTime ?? null);
       toast.success("已提交");
-      clearCartStorage(token, jwtMode);
+      clearCartStorage();
       sync.setLatest({});
       setCart({});
       setScheduledPickupTime(null);
@@ -372,139 +367,32 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const handleCopyGeneralModeUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(generalModeUrl);
-      setModeLinkCopied(true);
-      setTimeout(() => setModeLinkCopied(false), 2000);
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = generalModeUrl;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      setModeLinkCopied(true);
-      setTimeout(() => setModeLinkCopied(false), 2000);
-    }
-  };
-
-  const handleJumpToGeneralMode = () => {
-    window.location.href = generalModeUrl;
-  };
-
-  // 直链模式阻断弹窗（第一时间展示，不受 loading/error 影响）
-  const modeDialogEl = !jwtMode && showModeDialog && (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/45 p-4">
-      <div
-        className="flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--student-radius-lg)] bg-[var(--student-surface-raised)]"
-        style={{ maxHeight: "82vh" }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="mode-dialog-title"
-      >
-        {/* Header */}
-        <div className="border-b border-[var(--student-hairline)] px-4 py-3">
-          <p id="mode-dialog-title" className="text-[15px] font-semibold text-[var(--student-ink)]">
-            提示
-          </p>
-        </div>
-
-        {/* Body */}
-        <div className="flex flex-col items-center gap-3 px-4 py-4 overflow-y-auto">
-          <p className="text-[13px] text-[var(--student-body)] text-center leading-relaxed">
-            申领物品请识别一下二维码进行注册，当前模式不可用
-          </p>
-
-          {/* QR Code */}
-          <div className="shrink-0 rounded-xl p-2 bg-white shadow-md" style={{ width: 140, height: 140 }}>
-            <QRCodeSVG
-              value={generalModeUrl}
-              size={124}
-              level="M"
-              fgColor="#1e293b"
-              bgColor="#ffffff"
-            />
-          </div>
-
-          {/* Link + actions */}
-          <div className="flex items-center gap-1.5 w-full max-w-[240px] rounded-full bg-[var(--student-canvas-soft)] border border-[var(--student-hairline)] px-3 py-1.5">
-            <span className="text-[11px] font-mono text-[var(--student-body)] truncate flex-1 select-all">
-              通用模式入口
-            </span>
-            <button
-              type="button"
-              onClick={handleCopyGeneralModeUrl}
-              className="shrink-0 p-1 rounded hover:bg-[var(--student-surface)] transition-colors"
-              title="复制链接"
-            >
-              {modeLinkCopied ? (
-                <Check className="size-3.5 text-green-500" strokeWidth={2.5} />
-              ) : (
-                <Copy className="size-3.5 text-[var(--student-mute)]" strokeWidth={1.8} />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={handleJumpToGeneralMode}
-              className="shrink-0 p-1 rounded hover:bg-[var(--student-surface)] transition-colors"
-              title="跳转到通用模式"
-            >
-              <ExternalLink className="size-3.5 text-[var(--student-mute)]" strokeWidth={1.8} />
-            </button>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end border-t border-[var(--student-hairline)] px-4 py-3">
-          <button
-            type="button"
-            onClick={() => setShowModeDialog(false)}
-            className="h-8 min-w-[72px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 text-center text-xs font-medium text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)]"
-          >
-            我知道了
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   if (loading) {
     return (
-      <>
-        {modeDialogEl}
-        <div className="flex h-full items-center justify-center bg-[var(--student-canvas)]">
-          <Loader2 className="size-6 animate-spin text-[var(--student-mute)] motion-reduce:animate-none" />
-        </div>
-      </>
+      <div className="flex h-full items-center justify-center bg-[var(--student-canvas)]" style={MM_THEME}>
+        <Loader2 className="size-6 animate-spin text-[var(--student-mute)] motion-reduce:animate-none" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <>
-        {modeDialogEl}
-        <div className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--student-canvas)]">
-          <WifiOff className="size-8 text-[var(--student-mute)]" />
-          <p className="text-xs text-[var(--student-mute)]">{error}</p>
-          <button
-            type="button"
-            onClick={load}
-            className="rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 py-2 text-xs font-medium text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)] active:bg-[var(--student-primary-pressed)]"
-          >
-            重试
-          </button>
-        </div>
-      </>
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--student-canvas)]" style={MM_THEME}>
+        <WifiOff className="size-8 text-[var(--student-mute)]" />
+        <p className="text-xs text-[var(--student-mute)]">{error}</p>
+        <button
+          type="button"
+          onClick={load}
+          className="rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 py-2 text-xs font-medium text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)] active:bg-[var(--student-primary-pressed)]"
+        >
+          重试
+        </button>
+      </div>
     );
   }
 
   return (
-    <>
-      {modeDialogEl}
-
+    <div style={MM_THEME} className="contents">
       <div className="flex h-full min-h-0 flex-col bg-[var(--student-canvas)]">
         {/* 顶栏：搜索 + 我的记录 */}
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-1.5">
@@ -534,8 +422,8 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
         {/* 分类 + 物品列表 */}
         <SplitSidebarScrollLayout
-          sidebarClassName="w-[76px] shrink-0 border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"
-          contentClassName="px-2 pt-1.5 pb-3"
+          sidebarClassName="w-[128px] shrink-0 border-r border-[var(--student-hairline)] bg-[#e9eef6]"
+          contentClassName="px-3 pt-2 pb-3"
           sidebar={
             <MobileMaterialCategoryRail
               activeCat={activeCat}
@@ -549,11 +437,11 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                 {searchKeyword.trim() ? "未找到匹配物品" : "暂无上架物品"}
               </p>
             ) : (
-              <ul className="divide-y divide-[var(--student-hairline)] overflow-hidden rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)]">
+              <ul className="space-y-2">
               {filteredItems.map((item) => (
                 <li
                   key={item.id}
-                  className="flex gap-2 p-2"
+                  className="flex gap-2 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-2.5 shadow-sm"
                 >
                   {item.coverAbsUrl ? (
                     <button
@@ -618,9 +506,8 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
         <MobileMaterialCartBar
           cartCount={cartCount}
-          submitting={submitting}
           onOpenCart={openCartSheet}
-          onSubmit={submitOrder}
+          onOpenRequests={() => setShowRequests(true)}
         />
       </div>
 
@@ -709,7 +596,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                   onClick={submitOrder}
                   className="h-8 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-3 text-xs font-semibold text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)]"
                 >
-                  去提交
+                  提交申领
                 </button>
               </div>
             </div>
@@ -994,6 +881,6 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

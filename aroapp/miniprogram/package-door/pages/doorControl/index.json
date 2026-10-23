@@ -1,7 +1,7 @@
 {
   "navigationBarTitleText": "门禁应用",
+  "backgroundColor": "#f5f6f7",
   "usingComponents": {
-    "van-icon": "@vant/weapp/icon/index",
-    "van-action-sheet": "@vant/weapp/action-sheet/index"
+    "van-icon": "@vant/weapp/icon/index"
   }
 }

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { MaterialSpecPickerItem } from "@/utils/materialSpecHelpers";
 import { sumCartQtyForItem, maxQtyForMaterialItem } from "@/utils/materialSpecHelpers";
-import { SpecSheet } from "./SpecSheet";
+import { SpecSheet, MINI_THEME } from "./SpecSheet";
 
 /** 卡片内嵌：选择规格按钮 + SpecSheet 居中弹窗 */
 export function MaterialSpecPickControl({
@@ -39,8 +39,8 @@ export function MaterialSpecPickControl({
       ? cn(
           "relative shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors",
           open
-            ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
-            : "border-cyan-500/40 bg-cyan-500/15 text-cyan-400",
+            ? "border-[#2563eb] bg-[#2563eb] text-white"
+            : "border-[#2563eb]/40 bg-[#eff6ff] text-[#2563eb]",
           soldOut && "opacity-40 cursor-not-allowed",
         )
       : variant === "mobile"
@@ -84,6 +84,7 @@ export function MaterialSpecPickControl({
       </button>
 
       <SpecSheet
+        theme={MINI_THEME}
         open={open}
         onOpenChange={setOpen}
         item={item}

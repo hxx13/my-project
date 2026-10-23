@@ -1,3 +1,4 @@
+
 /** 手机版 — 动物订购子页（复用 PC 端 reference-data 数据层，移动端重排 UI） */
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
@@ -77,7 +78,29 @@ function fieldVal(item: RefDataItem, key: string): string {
   return v == null ? "" : String(v);
 }
 
-export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExitGuard }: { jwtMode?: boolean; onRegisterExitGuard?: (fn: (() => Promise<boolean>) | null) => void }) {
+/** 小程序同款配色：本页作用域内覆盖 --student-* 令牌 */
+const AO_THEME = {
+  "--student-primary": "#2563eb",
+  "--student-primary-foreground": "#ffffff",
+  "--student-primary-hover": "#1d4ed8",
+  "--student-primary-pressed": "#1e40af",
+  "--student-primary-muted": "rgba(37,99,235,0.14)",
+  "--student-canvas": "#eef0f6",
+  "--student-canvas-soft": "#f6f7fb",
+  "--student-canvas-soft-2": "#f1f3f7",
+  "--student-surface": "#ffffff",
+  "--student-surface-raised": "#ffffff",
+  "--student-hairline": "#eef0f4",
+  "--student-ink": "#1e293b",
+  "--student-body": "#334155",
+  "--student-mute": "#64748b",
+  "--student-danger": "#ef4444",
+  "--student-radius-sm": "8px",
+  "--student-radius-md": "12px",
+  "--student-radius-lg": "16px",
+} as React.CSSProperties;
+
+export default function MobileAnimalOrderView({ onRegisterExitGuard }: { onRegisterExitGuard?: (fn: (() => Promise<boolean>) | null) => void }) {
   const qc = useQueryClient();
   const [activeTypeKey, setActiveTypeKey] = useState("SUPPLIER");
   const [drillStack, setDrillStack] = useState<DrillSegment[]>([]);
@@ -717,7 +740,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                 key={item.id}
                 /* 一个物品一张卡：白底 + 投影 + 圆角 + 卡间距（照小程序 .goods），不再挤在一个带分隔线的长条里 */
                 className={cn(
-                  "flex gap-2 rounded-[var(--student-radius-md)] bg-[var(--student-surface)] p-3 shadow-[0_2px_7px_rgba(15,23,42,0.06)]",
+                  "flex gap-2 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-3 shadow-[0_2px_8px_rgba(15,23,42,0.07)]",
                   canDrill && "active:bg-[var(--student-canvas-soft)]",
                 )}
                 onClick={canDrill ? () => handleDrillDown(item) : undefined}
@@ -824,7 +847,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
 
   if (!campus) {
     return (
-      <div className="h-full bg-[var(--student-canvas)]">
+      <div className="h-full bg-[var(--student-canvas)]" style={AO_THEME}>
         <CampusGate
           onSelect={(c) => {
             storeCampus(c);
@@ -836,7 +859,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
   }
 
   return (
-    <div className="animal-order-scope flex h-full min-h-0 flex-col bg-[var(--student-canvas)]">
+    <div className="animal-order-scope flex h-full min-h-0 flex-col bg-[var(--student-canvas)]" style={AO_THEME}>
       {/* 加购上下文：校区 + AUP 合成一条紧凑栏，各自点开面板（订单入口只保留底部购物车旁那一个） */}
       <div className="shrink-0 border-b border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-2">
         <div className="flex items-center gap-2">

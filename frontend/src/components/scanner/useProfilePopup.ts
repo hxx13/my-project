@@ -312,9 +312,12 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         }
         if (suppressInsideCornerInitRef.current || pendingExitRefreshRef.current) return;
         if (enterCelebrateRoomId || exitCelebrateRoomId) return;
-        const primary = targetRooms[0];
-        if (!primary) return;
-        const roomId = primary.officialRoomId || primary.id;
+        // 已在场内：优先用「当前所在房间」（pendingRooms），否则才退回可进入房间列表第一项。
+        // 直接用 targetRooms[0] 会把在 401 的人显示成列表里排第一的 201C。
+        const primary =
+            normalizeRoomInfoArray(result?.pendingRooms).find((r) => r.officialRoomId || r.id) ??
+            targetRooms[0];
+        const roomId = primary?.officialRoomId || primary?.id;
         if (!roomId) return;
         const initKey = `${user?.userId ?? ""}|${roomId}`;
         if (insideCornerInitKeyRef.current === initKey) return;

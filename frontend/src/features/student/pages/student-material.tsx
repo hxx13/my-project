@@ -328,24 +328,26 @@ export default function StudentMaterialPage() {
         <div className="flex min-h-0 flex-1">
           {/* Sidebar — only shown when drilled (all-items or specific category)，对齐 admin 下钻 */}
           {activeCategoryId !== "root" && (
-            <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] py-2">
+            <aside className="w-[132px] shrink-0 overflow-y-auto border-r border-[var(--student-hairline)] bg-[#e9eef6] p-2">
               <button type="button" onClick={() => setActiveCategoryId("root")}
-                className="mb-1 flex w-full items-center gap-1 border-b border-[var(--student-hairline)] px-3 py-2 text-xs font-medium text-[var(--student-primary)] transition-colors hover:bg-[var(--student-canvas)]">
-                <span className="text-sm leading-none">←</span>
+                className="mb-2 flex w-full items-center justify-center gap-1 rounded-lg bg-white/60 px-2 py-2.5 text-[12px] font-semibold text-[#2563eb] transition-colors hover:bg-white">
+                <span className="leading-none">←</span>
                 <span>返回分类</span>
               </button>
               <button onClick={() => setActiveCategoryId("all")}
-                className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
-                  activeCategoryId === "all" ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
-                                             : "text-[var(--student-body)] hover:bg-[color-mix(in_srgb,var(--student-canvas)_80%,transparent)] border-l-transparent")}>
+                className={cn("mb-1.5 block w-full rounded-lg px-2 py-2.5 text-center text-[12px] leading-snug transition-colors",
+                  activeCategoryId === "all"
+                    ? "bg-[#2563eb] font-semibold text-white shadow-[0_3px_8px_rgba(37,99,235,0.28)]"
+                    : "text-[var(--student-body)] hover:bg-white/60")}>
                 全部
               </button>
-              <div className="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--student-mute)]">分类</div>
+              <div className="px-2 py-1 text-[10px] font-semibold tracking-wide text-[var(--student-mute)]">分类</div>
               {categories?.map(c => (
                 <button key={c.id} onClick={() => setActiveCategoryId(c.id)}
-                  className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
-                    activeCategoryId === c.id ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
-                                              : "text-[var(--student-body)] hover:bg-[color-mix(in_srgb,var(--student-canvas)_80%,transparent)] border-l-transparent")}>
+                  className={cn("mb-1.5 block w-full rounded-lg px-2 py-2.5 text-center text-[12px] leading-snug transition-colors",
+                    activeCategoryId === c.id
+                      ? "bg-[#2563eb] font-semibold text-white shadow-[0_3px_8px_rgba(37,99,235,0.28)]"
+                      : "text-[var(--student-body)] hover:bg-white/60")}>
                   {c.name}
                 </button>
               ))}

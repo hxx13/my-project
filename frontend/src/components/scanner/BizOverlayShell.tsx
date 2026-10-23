@@ -58,20 +58,19 @@ export function BizOverlayShell({ userId, scanUser, title, onCancel }: BizOverla
             {...overlayDismiss}
           >
             <motion.div
-              layout
-              className={`flex rounded-2xl border ${SHELL_BORDER} ${SHELL_BG} shadow-2xl overflow-hidden`}
-              style={{
+              initial={false}
+              animate={{
                 width: selected
                   ? `calc(${MENU_COMPACT}px + (${TOTAL_VW}vw - ${MENU_COMPACT}px) * 1.4)`
                   : `${MENU_FULL}px`,
-                height: `${TOTAL_VH}vh`,
               }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className={`flex rounded-2xl border ${SHELL_BORDER} ${SHELL_BG} shadow-2xl overflow-hidden`}
+              style={{ height: `${TOTAL_VH}vh` }}
+              transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.28 }}
             >
               {/* ── 左侧菜单面板（展开右侧时缩小）── */}
-              <motion.div
-                layout
-                className="flex shrink-0 flex-col"
+              <div
+                className="flex shrink-0 flex-col overflow-hidden transition-[width] duration-300 ease-out"
                 style={{
                   width: selected ? `${MENU_COMPACT}px` : `${MENU_FULL}px`,
                   minWidth: selected ? `${MENU_COMPACT}px` : `${MENU_FULL}px`,
@@ -99,7 +98,7 @@ export function BizOverlayShell({ userId, scanUser, title, onCancel }: BizOverla
                         onClick={() => handleSelect(item)}
                         className={`w-full flex items-center justify-center gap-3 px-4 py-3 transition-colors ${
                           selected?.id === item.id
-                            ? "bg-cyan-500/15 text-cyan-400 border-l-2 border-cyan-400"
+                            ? "bg-[#2563eb]/12 text-[#2563eb] border-l-2 border-[#2563eb]"
                             : `${SHELL_TEXT_MUTED} ${SHELL_HOVER} border-l-2 border-transparent`
                         }`}
                       >
@@ -111,16 +110,15 @@ export function BizOverlayShell({ userId, scanUser, title, onCancel }: BizOverla
                     ))
                   )}
                 </div>
-              </motion.div>
+              </div>
 
               {/* ── 右侧内容面板 ── */}
               {selected && (
                 <motion.div
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: `calc((${TOTAL_VW}vw - ${MENU_COMPACT}px) * 1.4)`, opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  className={`flex shrink-0 flex-col border-l ${SHELL_BORDER}`}
-                  style={{ width: `calc((${TOTAL_VW}vw - ${MENU_COMPACT}px) * 1.4)` }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.18, delay: 0.12 }}
+                  className={`flex min-w-0 flex-1 flex-col overflow-hidden border-l ${SHELL_BORDER}`}
                 >
                   <div className={`flex shrink-0 items-center gap-2 border-b ${SHELL_BORDER} px-3 py-3`}>
                     <button onClick={handleBack}
